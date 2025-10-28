@@ -1,90 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p src
-
-# ---------- index.html ----------
-cat <<'EOF' > index.html
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Calculator</title>
-    <link rel="stylesheet" href="/src/style.css" />
-  </head>
-  <body>
-    <div class="wrapper">
-      <div id="calculator" role="application" aria-label="Calculator">
-        <header class="display" aria-live="polite" aria-atomic="true" id="display">0</header>
-
-        <main class="keys" aria-label="Calculator keypad">
-          <!-- Row 1 -->
-          <button class="key fn" data-key="clear" aria-label="All Clear">AC</button>
-          <button class="key fn" data-key="sign" aria-label="Toggle Sign">±</button>
-          <button class="key fn" data-key="percent" aria-label="Percent">%</button>
-          <button class="key op" data-key="divide" aria-label="Divide">÷</button>
-
-          <!-- Row 2 -->
-          <button class="key" data-key="7">7</button>
-          <button class="key" data-key="8">8</button>
-          <button class="key" data-key="9">9</button>
-          <button class="key op" data-key="multiply" aria-label="Multiply">×</button>
-
-          <!-- Row 3 -->
-          <button class="key" data-key="4">4</button>
-          <button class="key" data-key="5">5</button>
-          <button class="key" data-key="6">6</button>
-          <button class="key op" data-key="minus" aria-label="Minus">−</button>
-
-          <!-- Row 4 -->
-          <button class="key" data-key="1">1</button>
-          <button class="key" data-key="2">2</button>
-          <button class="key" data-key="3">3</button>
-          <button class="key op" data-key="plus" aria-label="Plus">+</button>
-
-          <!-- Row 5 -->
-          <button class="key zero" data-key="0" aria-label="Zero">0</button>
-          <button class="key" data-key="dot" aria-label="Decimal">.</button>
-          <button class="key eq" data-key="equals" aria-label="Equals">=</button>
-        </main>
-      </div>
-    </div>
-
-    <script type="module" src="/src/main.ts"></script>
-  </body>
-</html>
-EOF
-
-# ---------- src/style.css ----------
+# 1) Make the calculator box a bit bigger by reducing the outer padding
+#    (this gives it more room without changing the aspect ratio)
 cat <<'EOF' > src/style.css
 :root{
   /* Dark green theme */
-  --bg: #0b2b24;            /* page background */
-  --pad-block: clamp(20px, 4vmin, 56px); /* comfy top/bottom padding */
-  --pad-inline: clamp(16px, 4vmin, 40px);
+  --bg: #0b2b24;
 
-  --panel: #0f3a31;         /* calculator body */
-  --panel-2: #114238;       /* inner surfaces */
+  /* ↓ slightly reduced so the calculator grows a bit more */
+  --pad-block: clamp(12px, 3vmin, 40px);
+  --pad-inline: clamp(12px, 3vmin, 32px);
+
+  --panel: #0f3a31;
+  --panel-2: #114238;
   --bevel: rgba(255,255,255,0.06);
   --shadow: rgba(0,0,0,0.35);
 
-  --ink: #e6ffef;           /* primary text */
-  --ink-dim: #bde6cc;       /* secondary text */
+  --ink: #e6ffef;
+  --ink-dim: #bde6cc;
 
-  --btn: #155348;           /* number button */
+  --btn: #155348;
   --btn-hover: #1a5e52;
   --btn-active: #11463d;
 
-  --fn: #0e4b40;            /* function (AC, ±, %) */
+  --fn: #0e4b40;
   --fn-hover: #10564a;
   --fn-active: #0a3c33;
 
-  --op: #1b6f60;            /* operators */
+  --op: #1b6f60;
   --op-hover: #1f7b6b;
   --op-active: #166556;
 
-  --eq: #2d9c86;            /* equals */
+  --eq: #2d9c86;
   --eq-hover: #31a892;
   --eq-active: #278c79;
 
@@ -218,46 +166,189 @@ html, body {
 }
 EOF
 
-# ---------- src/main.ts ----------
-# Minimal hookup: no real math yet, just a shell (keeps display at "0" and logs button presses)
+# 2) Wire up real calculator logic
 cat <<'EOF' > src/main.ts
+type Op = "add" | "sub" | "mul" | "div" | null;
+
 const displayEl = document.getElementById("display") as HTMLElement;
-const keys = document.querySelector(".keys") as HTMLElement;
+const keysEl = document.querySelector(".keys") as HTMLElement;
 
-let current = "0";
+let current = "0";           // what's shown on display
+let acc: number | null = null; // accumulator (left operand)
+let op: Op = null;           // pending operator
+let lastOperand: number | null = null; // for repeated equals
+let enteringNew = true;      // if true, next digit replaces display
 
-function render() {
-  displayEl.textContent = current;
+function clampDigits(s: string, max = 16): string {
+  // Keep length reasonable; don't strip necessary minus or dot
+  if (s.includes("e") || s.includes("E")) return s; // scientific notation—leave as is
+  if (s.length <= max) return s;
+  // Try to limit decimals while keeping integer part
+  if (s.includes(".")) {
+    const [i, d] = s.split(".");
+    const room = Math.max(0, max - i.length - 1);
+    return room > 0 ? i + "." + d.slice(0, room) : i.slice(0, max);
+  }
+  return s.slice(0, max);
+}
+
+function fmt(n: number): string {
+  // Format with up to ~12 decimal places, then trim trailing zeros
+  const s = n.toFixed(12);
+  const trimmed = s.replace(/\.?0+$/, "");
+  return clampDigits(trimmed);
+}
+
+function setDisplay(text: string) {
+  displayEl.textContent = text;
+}
+
+function inputDigit(d: string) {
+  if (enteringNew) {
+    current = d === "0" ? "0" : d;
+    enteringNew = false;
+  } else {
+    if (current.replace("-", "").length >= 16) return; // avoid overflow
+    current = current === "0" ? d : current + d;
+  }
+  setDisplay(current);
+}
+
+function inputDot() {
+  if (enteringNew) {
+    current = "0.";
+    enteringNew = false;
+  } else if (!current.includes(".")) {
+    current += ".";
+  }
+  setDisplay(current);
+}
+
+function clearAll() {
+  current = "0";
+  acc = null;
+  op = null;
+  lastOperand = null;
+  enteringNew = true;
+  setDisplay(current);
+}
+
+function toggleSign() {
+  if (current === "0") return;
+  current = current.startsWith("-") ? current.slice(1) : "-" + current;
+  setDisplay(current);
+}
+
+function percent() {
+  const cur = Number(current);
+  if (Number.isNaN(cur)) return;
+
+  // iOS-like behavior: if we have a left operand, percent is relative to it
+  if (acc !== null && op) {
+    current = fmt((acc * cur) / 100);
+  } else {
+    current = fmt(cur / 100);
+  }
+  setDisplay(current);
+}
+
+function applyOp(a: number, b: number, which: Exclude<Op, null>): number {
+  switch (which) {
+    case "add": return a + b;
+    case "sub": return a - b;
+    case "mul": return a * b;
+    case "div": return b === 0 ? NaN : a / b;
+  }
+}
+
+function chooseOp(next: Exclude<Op, null>) {
+  const cur = Number(current);
+  if (acc === null) {
+    acc = cur;
+  } else if (!enteringNew && op) {
+    // chain operations: compute old op first
+    acc = applyOp(acc, cur, op);
+    current = fmt(acc);
+    setDisplay(current);
+  }
+  op = next;
+  enteringNew = true;
+  lastOperand = null; // reset repeated equals memory
+}
+
+function equals() {
+  if (!op) return;
+
+  let right: number;
+  if (enteringNew && lastOperand != null) {
+    // repeated equals: use the last operand again
+    right = lastOperand;
+  } else {
+    right = Number(current);
+    lastOperand = right;
+  }
+
+  if (acc === null) {
+    acc = Number(current); // edge case: equals with no left; show current
+  } else {
+    acc = applyOp(acc, right, op);
+  }
+
+  current = fmt(acc);
+  setDisplay(current);
+  enteringNew = true;
 }
 
 function handlePress(key: string) {
-  // Placeholder behavior; real math to be added later
-  if (/^[0-9]$/.test(key)) {
-    current = current === "0" ? key : current + key;
-  } else if (key === "dot") {
-    if (!current.includes(".")) current += ".";
-  } else if (key === "clear") {
-    current = "0";
-  } else if (key === "sign") {
-    if (current.startsWith("-")) current = current.slice(1);
-    else if (current !== "0") current = "-" + current;
-  } else if (key === "percent") {
-    const n = Number(current);
-    if (!Number.isNaN(n)) current = String(n / 100);
-  } else {
-    // ops/equals are stubs for now
+  if (/^[0-9]$/.test(key)) return inputDigit(key);
+  switch (key) {
+    case "dot": return inputDot();
+    case "clear": return clearAll();
+    case "sign": return toggleSign();
+    case "percent": return percent();
+    case "divide": return chooseOp("div");
+    case "multiply": return chooseOp("mul");
+    case "minus": return chooseOp("sub");
+    case "plus": return chooseOp("add");
+    case "equals": return equals();
   }
-  render();
 }
 
-keys.addEventListener("click", (e) => {
-  const target = e.target as HTMLElement;
-  const key = target?.getAttribute?.("data-key");
+// Click handling
+keysEl.addEventListener("click", (e) => {
+  const t = e.target as HTMLElement | null;
+  const key = t?.getAttribute?.("data-key");
   if (key) handlePress(key);
 });
 
-render();
+// Basic keyboard support
+window.addEventListener("keydown", (e) => {
+  const k = e.key;
+  if (/\d/.test(k)) return inputDigit(k);
+  if (k === "." || k === ",") return inputDot();
+  if (k === "Enter" || k === "=") return equals();
+  if (k === "Backspace") {
+    // Simple backspace behavior
+    if (enteringNew) return;
+    if (current.length <= 1 || (current.startsWith("-") && current.length === 2)) {
+      current = "0";
+      enteringNew = true;
+    } else {
+      current = current.slice(0, -1);
+    }
+    setDisplay(current);
+    return;
+  }
+  if (k === "+") return chooseOp("add");
+  if (k === "-") return chooseOp("sub");
+  if (k === "*" || k.toLowerCase() === "x") return chooseOp("mul");
+  if (k === "/") return chooseOp("div");
+  if (k.toLowerCase() === "c" || k.toLowerCase() === "a") return clearAll();
+  if (k === "%") return percent();
+});
+
+setDisplay(current);
 EOF
 
-echo "✅ UI updated: dark green theme, comfy padding, structured display & keypad."
-echo "Run: pnpm dev   (or npm run dev) to see the new look."
+echo "✅ Calculator logic wired up and UI spacing adjusted."
+echo "Run: pnpm dev   (or npm run dev) and try the buttons/keyboard."

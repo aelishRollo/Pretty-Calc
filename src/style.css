@@ -1,30 +1,32 @@
 :root{
   /* Dark green theme */
-  --bg: #0b2b24;            /* page background */
-  --pad-block: clamp(20px, 4vmin, 56px); /* comfy top/bottom padding */
-  --pad-inline: clamp(16px, 4vmin, 40px);
+  --bg: #0b2b24;
 
-  --panel: #0f3a31;         /* calculator body */
-  --panel-2: #114238;       /* inner surfaces */
+  /* ↓ slightly reduced so the calculator grows a bit more */
+  --pad-block: clamp(12px, 3vmin, 40px);
+  --pad-inline: clamp(12px, 3vmin, 32px);
+
+  --panel: #0f3a31;
+  --panel-2: #114238;
   --bevel: rgba(255,255,255,0.06);
   --shadow: rgba(0,0,0,0.35);
 
-  --ink: #e6ffef;           /* primary text */
-  --ink-dim: #bde6cc;       /* secondary text */
+  --ink: #e6ffef;
+  --ink-dim: #bde6cc;
 
-  --btn: #155348;           /* number button */
+  --btn: #155348;
   --btn-hover: #1a5e52;
   --btn-active: #11463d;
 
-  --fn: #0e4b40;            /* function (AC, ±, %) */
+  --fn: #0e4b40;
   --fn-hover: #10564a;
   --fn-active: #0a3c33;
 
-  --op: #1b6f60;            /* operators */
+  --op: #1b6f60;
   --op-hover: #1f7b6b;
   --op-active: #166556;
 
-  --eq: #2d9c86;            /* equals */
+  --eq: #2d9c86;
   --eq-hover: #31a892;
   --eq-active: #278c79;
 
