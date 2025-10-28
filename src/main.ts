@@ -1,169 +1,207 @@
-type Op = "add" | "sub" | "mul" | "div" | null;
-
+type Op = "add" | "sub" | "mul" | "div" | "mod";
 const valueEl = document.getElementById("value") as HTMLElement;
 const historyEl = document.getElementById("history") as HTMLElement;
 const keysEl = document.querySelector(".keys") as HTMLElement;
 
-let current = "0";
-let acc: number | null = null;
-let op: Op = null;
-let lastOperand: number | null = null;
-let enteringNew = true;
-let justEvaluated = false; // so typing a digit after "=" starts a fresh calc
+/** Expression shown while typing; becomes result string after '=' */
+let expr = "0";
+/** The previous calculation expression, persists until next '=' */
+let historyText = "";
+/** True immediately after '=', so next digit starts a new expression (history stays) */
+let justEvaluated = false;
 
-function sym(o: Exclude<Op, null>): string {
-  return o === "add" ? "+" : o === "sub" ? "−" : o === "mul" ? "×" : "÷";
-}
-
-function clampDigits(s: string, max = 16): string {
-  if (s.includes("e") || s.includes("E")) return s;
-  if (s.length <= max) return s;
-  if (s.includes(".")) {
-    const [i, d] = s.split(".");
-    const room = Math.max(0, max - i.length - 1);
-    return room > 0 ? i + "." + d.slice(0, room) : i.slice(0, max);
-  }
-  return s.slice(0, max);
-}
-
-function fmt(n: number): string {
-  const s = n.toFixed(12);
-  const trimmed = s.replace(/\.?0+$/, "");
-  return clampDigits(trimmed);
-}
-
-function setValue(text: string) { valueEl.textContent = text; }
-function setHistory(text: string) { historyEl.textContent = text; }
-
+function setValue(s: string) { valueEl.textContent = s; }
+function setHistory(s: string) { historyEl.textContent = s; }
 function render() {
-  setValue(current);
-  if (op && acc !== null) {
-    const left = fmt(acc);
-    const s = sym(op);
-    if (enteringNew) setHistory(`${left}${s}`);
-    else setHistory(`${left}${s}${current}`);
-  } else {
-    // leave history if we just evaluated; otherwise clear
-    if (!justEvaluated) setHistory("");
-  }
+  setValue(expr);
+  setHistory(historyText);
 }
 
-function resetAfterEqualsIfNeeded() {
-  if (justEvaluated) {
-    acc = null;
-    op = null;
-    lastOperand = null;
-    setHistory("");
-    justEvaluated = false;
+/* Helpers */
+const OP_CHARS = "+\u2212×÷%"; // + − × ÷ %
+function isOpChar(c: string) { return OP_CHARS.includes(c); }
+function endsWithOp(s: string) { return s.length > 0 && isOpChar(s[s.length - 1]); }
+
+function currentNumberBounds(s: string): [number, number] {
+  // handle wrapped negative like "…(-123.4)"
+  if (s.endsWith(")")) {
+    const open = s.lastIndexOf("(");
+    if (open !== -1 && s.slice(open, open + 2) === "(-") {
+      return [open, s.length];
+    }
   }
+  let i = s.length - 1;
+  while (i >= 0) {
+    const ch = s[i];
+    if ((ch >= "0" && ch <= "9") || ch === ".") { i--; continue; }
+    break;
+  }
+  return [Math.max(0, i + 1), s.length];
 }
 
-function inputDigit(d: string) {
-  resetAfterEqualsIfNeeded();
-  if (enteringNew) {
-    current = d === "0" ? "0" : d;
-    enteringNew = false;
+function getCurrentNumber(s: string) {
+  const [a, b] = currentNumberBounds(s);
+  const raw = s.slice(a, b);
+  const inner = raw.startsWith("(-") && raw.endsWith(")") ? raw.slice(2, -1) : raw;
+  return { raw, inner, a, b };
+}
+
+function replaceRange(s: string, a: number, b: number, repl: string) {
+  return s.slice(0, a) + repl + s.slice(b);
+}
+
+function insertDigit(d: string) {
+  if (justEvaluated) { expr = "0"; justEvaluated = false; }
+  const { raw, inner, a, b } = getCurrentNumber(expr);
+  if (expr === "0" && !inner.includes(".")) {
+    expr = d; // replace leading zero
   } else {
-    if (current.replace("-", "").length >= 16) return;
-    current = current === "0" ? d : current + d;
+    expr = replaceRange(expr, a, b, raw === "" ? d : raw + d);
   }
   render();
 }
 
-function inputDot() {
-  resetAfterEqualsIfNeeded();
-  if (enteringNew) {
-    current = "0.";
-    enteringNew = false;
-  } else if (!current.includes(".")) {
-    current += ".";
+function insertDot() {
+  if (justEvaluated) { expr = "0"; justEvaluated = false; }
+  const { raw, inner, a, b } = getCurrentNumber(expr);
+  if (inner.includes(".")) return;
+  if (raw === "" || inner === "") {
+    expr = replaceRange(expr, a, b, (raw.startsWith("(-") ? "(-0.)" : "0."));
+  } else {
+    expr = replaceRange(expr, a, b, raw + ".");
   }
+  render();
+}
+
+function toggleSign() {
+  if (justEvaluated) { /* keep showing result but allow new negative start */ }
+  const { raw, inner, a, b } = getCurrentNumber(expr);
+  if (!inner || inner === "0") return;
+  const wrapped = raw.startsWith("(-") && raw.endsWith(")");
+  const repl = wrapped ? inner : "(-" + inner + ")";
+  expr = replaceRange(expr, a, b, repl);
+  render();
+}
+
+function backspace() {
+  if (justEvaluated) return; // after '=', backspace does nothing until new input
+  if (expr.length <= 1) { expr = "0"; return render(); }
+  expr = expr.slice(0, -1);
+  if (expr === "" || expr === "-" || expr === "(-") expr = "0";
+  render();
+}
+
+function insertOp(which: Op) {
+  const ch = which === "add" ? "+" :
+             which === "sub" ? "\u2212" :
+             which === "mul" ? "×" :
+             which === "div" ? "÷" : "%";
+  if (justEvaluated) { justEvaluated = false; } // continue from result
+  if (expr === "0" && which !== "sub") return; // don't start with op except allow sign via ±
+  if (endsWithOp(expr)) expr = expr.slice(0, -1) + ch;
+  else expr += ch;
   render();
 }
 
 function clearAll() {
-  current = "0";
-  acc = null;
-  op = null;
-  lastOperand = null;
-  enteringNew = true;
-  justEvaluated = false;
-  setHistory("");
-  setValue(current);
-}
-
-function toggleSign() {
-  if (current === "0") return;
-  current = current.startsWith("-") ? current.slice(1) : "-" + current;
-  render();
-}
-
-function percent() {
-  const cur = Number(current);
-  if (Number.isNaN(cur)) return;
-  if (acc !== null && op) current = fmt((acc * cur) / 100);
-  else current = fmt(cur / 100);
-  render();
-}
-
-function applyOp(a: number, b: number, which: Exclude<Op, null>): number {
-  switch (which) {
-    case "add": return a + b;
-    case "sub": return a - b;
-    case "mul": return a * b;
-    case "div": return b === 0 ? NaN : a / b;
-  }
-}
-
-function chooseOp(next: Exclude<Op, null>) {
-  const cur = Number(current);
-  if (acc === null) {
-    acc = cur;
-  } else if (!enteringNew && op) {
-    acc = applyOp(acc, cur, op);
-    current = fmt(acc);
-  }
-  op = next;
-  enteringNew = true;
-  lastOperand = null;
+  expr = "0";
+  historyText = "";
   justEvaluated = false;
   render();
 }
 
+/* Evaluation: shunting-yard with + - * / % and parentheses; '(-x)' becomes '(0-x)' */
+function normalizeForEval(s: string): string {
+  let t = s.replace(/\u2212/g, "-").replace(/×/g, "*").replace(/÷/g, "/");
+  t = t.replace(/\(-/g, "(0-");
+  // trim trailing operators/opens/dots
+  while (/[+\-*/%(.]$/.test(t)) t = t.slice(0, -1);
+  if (t === "") t = "0";
+  return t;
+}
+
+function evalExpr(s: string): number {
+  const prec: Record<string, number> = { "+":1, "-":1, "*":2, "/":2, "%":2 };
+  const out: (number|string)[] = [];
+  const ops: string[] = [];
+  // tokenize
+  for (let i=0;i<s.length;){
+    const c = s[i];
+    if (c >= "0" && c <= "9" || c === ".") {
+      let j=i+1;
+      while (j < s.length && ((s[j] >= "0" && s[j] <= "9") || s[j] === ".")) j++;
+      out.push(parseFloat(s.slice(i,j)));
+      i=j; continue;
+    }
+    if ("+-*/%".includes(c)) {
+      while (ops.length){
+        const top = ops[ops.length-1];
+        if ("+-*/%".includes(top) && prec[top] >= prec[c]) {
+          out.push(ops.pop() as string);
+        } else break;
+      }
+      ops.push(c); i++; continue;
+    }
+    if (c === "("){ ops.push(c); i++; continue; }
+    if (c === ")"){
+      while (ops.length && ops[ops.length-1] !== "(") out.push(ops.pop() as string);
+      if (ops.length && ops[ops.length-1] === "(") ops.pop();
+      i++; continue;
+    }
+    // skip any stray spaces
+    i++;
+  }
+  while (ops.length) out.push(ops.pop() as string);
+
+  const st: number[] = [];
+  for (const tok of out){
+    if (typeof tok === "number") st.push(tok);
+    else {
+      const b = st.pop(); const a = st.pop();
+      if (a === undefined || b === undefined) return NaN;
+      let r = 0;
+      switch (tok){
+        case "+": r = a + b; break;
+        case "-": r = a - b; break;
+        case "*": r = a * b; break;
+        case "/": r = b === 0 ? NaN : a / b; break;
+        case "%": r = b === 0 ? NaN : a % b; break;
+      }
+      st.push(r);
+    }
+  }
+  return st.length ? st[0] : NaN;
+}
+
+function fmt(n: number): string {
+  if (!Number.isFinite(n)) return "Error";
+  const s = n.toFixed(12).replace(/\.?0+$/,"");
+  return s;
+}
+
+/* Actions */
 function equals() {
-  if (!op) return;
-
-  const leftSnap = acc !== null ? fmt(acc) : current;
-  const s = sym(op);
-
-  let right: number;
-  if (enteringNew && lastOperand != null) right = lastOperand;
-  else {
-    right = Number(current);
-    lastOperand = right;
-  }
-
-  if (acc === null) acc = Number(current);
-  else acc = applyOp(acc, right, op);
-
-  current = fmt(acc);
-  setHistory(`${leftSnap}${s}${fmt(right)}`); // keep compact history; no '=' per ref image
-  setValue(current);
-  enteringNew = true;
+  const raw = expr;
+  const norm = normalizeForEval(raw);
+  const result = evalExpr(norm);
+  const out = fmt(result);
+  historyText = raw;  // persist previous expression above
+  expr = out;         // show only the number after '='
   justEvaluated = true;
+  render();
 }
 
 function handlePress(key: string) {
-  if (/^[0-9]$/.test(key)) return inputDigit(key);
+  if (/^[0-9]$/.test(key)) return insertDigit(key);
   switch (key) {
-    case "dot": return inputDot();
+    case "dot": return insertDot();
     case "clear": return clearAll();
     case "sign": return toggleSign();
-    case "percent": return percent();
-    case "divide": return chooseOp("div");
-    case "multiply": return chooseOp("mul");
-    case "minus": return chooseOp("sub");
-    case "plus": return chooseOp("add");
+    case "percent": return insertOp("mod");
+    case "divide": return insertOp("div");
+    case "multiply": return insertOp("mul");
+    case "minus": return insertOp("sub");
+    case "plus": return insertOp("add");
     case "equals": return equals();
   }
 }
@@ -176,25 +214,16 @@ keysEl.addEventListener("click", (e) => {
 
 window.addEventListener("keydown", (e) => {
   const k = e.key;
-  if (/^\d$/.test(k)) return inputDigit(k);
-  if (k === "." || k === ",") return inputDot();
+  if (/^\d$/.test(k)) return insertDigit(k);
+  if (k === "." || k === ",") return insertDot();
   if (k === "Enter" || k === "=") return equals();
-  if (k === "Backspace") {
-    if (enteringNew) return;
-    if (current.length <= 1 || (current.startsWith("-") && current.length === 2)) {
-      current = "0";
-      enteringNew = true;
-    } else {
-      current = current.slice(0, -1);
-    }
-    return render();
-  }
-  if (k === "+") return chooseOp("add");
-  if (k === "-") return chooseOp("sub");
-  if (k === "*" || k.toLowerCase() === "x") return chooseOp("mul");
-  if (k === "/") return chooseOp("div");
+  if (k === "Backspace") return backspace();
+  if (k === "+") return insertOp("add");
+  if (k === "-") return insertOp("sub");
+  if (k === "*" || k.toLowerCase() === "x") return insertOp("mul");
+  if (k === "/") return insertOp("div");
+  if (k === "%") return insertOp("mod");
   if (k.toLowerCase() === "c" || k.toLowerCase() === "a") return clearAll();
-  if (k === "%") return percent();
 });
 
 render();
