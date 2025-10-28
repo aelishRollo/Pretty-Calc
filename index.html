@@ -7,6 +7,11 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <!-- Loading overlay for ? randomizer -->
+    <div id="spinner" aria-hidden="true">
+      <div class="spinner-ring" aria-label="Loading"></div>
+    </div>
+
     <div class="wrapper">
       <div id="calculator" role="application" aria-label="Calculator">
         <header class="display" aria-hidden="false">
@@ -17,10 +22,10 @@
         </header>
 
         <main class="keys" aria-label="Calculator keypad">
-          <!-- Row 1: AC, ±, (, ÷ -->
+          <!-- Row 1: AC, ±, (), ÷ -->
           <button class="key fn" data-key="clear" aria-label="All Clear">AC</button>
           <button class="key fn" data-key="sign" aria-label="Toggle Sign">±</button>
-          <button class="key fn" data-key="lparen" aria-label="Left Parenthesis">(</button>
+          <button class="key fn" data-key="parenToggle" aria-label="Parentheses">()</button>
           <button class="key op" data-key="divide" aria-label="Divide">÷</button>
 
           <!-- Row 2: 7 8 9 × -->

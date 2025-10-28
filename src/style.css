@@ -1,19 +1,20 @@
 :root{
-  --pad-inline: 30vw; /* left/right margin (yours) */
-  --pad-block: 10vh;  /* top/bottom margin (yours) */
+  --pad-inline: 30vw;
+  --pad-block: 10vh;
 
+  /* Base fallback (gets replaced by random photos) */
   --bg: #0b2b24;
 
-  /* Palette variables (JS will randomize these) */
-  --panel: rgba(15, 58, 49, 0.82);
-  --panel-2: rgba(17, 66, 56, 0.82);
-  --btn: rgba(21, 83, 72, 0.85);
-  --fn: rgba(14, 75, 64, 0.85);
-  --op: rgba(27, 111, 96, 0.88);
-  --eq: rgba(45, 156, 134, 0.92);
+  /* More transparent so the image shines through */
+  --panel: rgba(15, 58, 49, 0.48);
+  --panel-2: rgba(17, 66, 56, 0.48);
+  --btn: rgba(21, 83, 72, 0.50);
+  --fn: rgba(14, 75, 64, 0.50);
+  --op: rgba(27, 111, 96, 0.54);
+  --eq: rgba(45, 156, 134, 0.62);
 
-  --ink: #e6ffef;        /* text */
-  --ink-dim: #cfe6de;    /* history */
+  --ink: #f6fff9;
+  --ink-dim: #d6e8e0;
 
   --bevel: rgba(255,255,255,0.06);
   --shadow: rgba(0,0,0,0.35);
@@ -27,23 +28,42 @@
   --font-num: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-ui: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
 
-  /* Adaptive value font size, controlled by JS */
-  --value-size: 7.2vmin;
+  --value-size: 7.2vmin; /* JS adapts this */
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   height: 100%;
   font-family: var(--font-ui);
-  /* We’ll set a random image on body via JS; keep a fallback color */
-  background: var(--bg);
-  background-position: center;
-  background-size: cover;
-  background-attachment: fixed;
   color: var(--ink);
+  background: var(--bg) center / cover fixed no-repeat;
 }
+
+/* Loading overlay (unchanged from before) */
+#spinner{
+  position: fixed;
+  inset: 0;
+  display: none;
+  place-items: center;
+  background: rgba(0,0,0,0.25);
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+#spinner.active{ display: grid; }
+.spinner-ring{
+  width: clamp(64px, 12vmin, 140px);
+  height: clamp(64px, 12vmin, 140px);
+  border-radius: 50%;
+  border: 10px solid rgba(255,255,255,0.35);
+  border-top-color: rgba(255,255,255,0.95);
+  animation: spin 1s linear infinite;
+  box-shadow: 0 0 30px rgba(0,0,0,0.35);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .wrapper {
   min-height: 100svh;
@@ -53,23 +73,19 @@ html, body {
   place-items: center;
 }
 
-/* Calculator fills the inner box; semi-transparent with blur for readability */
+/* Calculator: even more transparent + slightly stronger blur */
 #calculator{
   width: calc(100vw - 2 * var(--pad-inline));
   height: calc(100svh - 2 * var(--pad-block));
-  background:
-    linear-gradient(180deg, var(--panel), var(--panel-2));
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
   border-radius: var(--radius-lg);
-  box-shadow:
-    0 24px 60px var(--shadow),
-    inset 0 1px 0 var(--bevel);
+  box-shadow: 0 24px 60px var(--shadow), inset 0 1px 0 var(--bevel);
   display: grid;
-  grid-template-rows: 1fr 3fr; /* display + keys */
+  grid-template-rows: 1fr 3fr;
   overflow: hidden;
 
-  /* Visibility helpers on busy photos */
-  backdrop-filter: blur(8px) saturate(1.1) brightness(0.95);
-  -webkit-backdrop-filter: blur(8px) saturate(1.1) brightness(0.95);
+  backdrop-filter: blur(12px) saturate(1.2) brightness(0.96) contrast(1.06);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2) brightness(0.96) contrast(1.06);
 }
 
 /* Display */
@@ -78,8 +94,8 @@ html, body {
   align-items: center;
   padding: clamp(10px, 2.3vmin, 18px);
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0)),
-    linear-gradient(180deg, color-mix(in oklab, var(--panel) 85%, #0000), color-mix(in oklab, var(--panel-2) 85%, #0000));
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0)),
+    linear-gradient(180deg, color-mix(in oklab, var(--panel) 72%, #0000), color-mix(in oklab, var(--panel-2) 72%, #0000));
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
@@ -87,17 +103,17 @@ html, body {
 .display-inner{
   width: 100%;
   height: 100%;
-  border: 2px solid rgba(184, 246, 222, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.33);
   border-radius: calc(var(--radius-md) - 4px);
   padding: clamp(8px, 1.8vmin, 14px);
   background: linear-gradient(180deg,
-    color-mix(in oklab, var(--panel) 80%, #0000) 0%,
-    color-mix(in oklab, var(--panel-2) 80%, #0000) 100%);
+    color-mix(in oklab, var(--panel) 60%, #0000) 0%,
+    color-mix(in oklab, var(--panel-2) 60%, #0000) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.06),
     inset 0 -6px 18px rgba(0,0,0,0.35);
   display: grid;
-  grid-template-rows: auto 1fr; /* history over value */
+  grid-template-rows: auto 1fr;
   gap: 2px;
 }
 
@@ -123,7 +139,7 @@ html, body {
   text-shadow: 0 1px 0 rgba(0,0,0,0.45);
 }
 
-/* Keys: 4 columns x 5 rows; '=' spans bottom 2 columns (largest button) */
+/* Keys */
 .keys{
   padding: var(--spacing);
   display: grid;
@@ -131,10 +147,12 @@ html, body {
   grid-auto-rows: 1fr;
   gap: var(--gap);
   background:
-    linear-gradient(180deg, color-mix(in oklab, var(--panel) 92%, #0000), color-mix(in oklab, var(--panel-2) 92%, #0000));
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--panel) 80%, #0000),
+      color-mix(in oklab, var(--panel-2) 80%, #0000));
 }
 
-/* Buttons — DOUBLE-SIZED label */
+/* Buttons (big labels) */
 .key{
   appearance: none;
   border: 0;
@@ -142,30 +160,23 @@ html, body {
   background: var(--btn);
   color: var(--ink);
   font: 800 clamp(22px, 4.6vmin, 36px) / 1 var(--font-ui);
-  box-shadow:
-    0 8px 18px rgba(0,0,0,0.35),
-    inset 0 1px 0 var(--bevel);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.35), inset 0 1px 0 var(--bevel);
   display: grid;
   place-items: center;
-  transition: transform 80ms ease, background 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+  transition: transform 80ms ease, filter 120ms ease, box-shadow 120ms ease;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 .key:hover{ filter: brightness(1.06); }
 .key:active{
   transform: translateY(1px) scale(0.99);
-  box-shadow:
-    0 6px 12px rgba(0,0,0,0.45),
-    inset 0 1px 0 var(--bevel);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.45), inset 0 1px 0 var(--bevel);
 }
 
 .key.fn{ background: var(--fn); }
 .key.op{ background: var(--op); }
+.key.eq{ background: var(--eq); grid-column: span 2; }
 
-.key.eq{
-  background: var(--eq);
-  grid-column: span 2;
-}
 .key:focus-visible{
   outline: 2px solid #b8f6de;
   outline-offset: 2px;
