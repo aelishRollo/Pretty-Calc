@@ -9,7 +9,12 @@
   <body>
     <div class="wrapper">
       <div id="calculator" role="application" aria-label="Calculator">
-        <header class="display" aria-live="polite" aria-atomic="true" id="display">0</header>
+        <header class="display" aria-hidden="false">
+          <div class="display-inner" role="status" aria-live="polite" aria-atomic="true">
+            <div class="history" id="history"></div>
+            <div class="value" id="value">0</div>
+          </div>
+        </header>
 
         <main class="keys" aria-label="Calculator keypad">
           <!-- Row 1 -->

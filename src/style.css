@@ -1,10 +1,9 @@
 :root{
-  /* Dark green theme */
   --bg: #0b2b24;
 
-  /* ↓ slightly reduced so the calculator grows a bit more */
-  --pad-block: clamp(12px, 3vmin, 40px);
-  --pad-inline: clamp(12px, 3vmin, 32px);
+  /* keep comfy outer space */
+  --pad-block: clamp(16px, 4vmin, 48px);
+  --pad-inline: clamp(16px, 4vmin, 36px);
 
   --panel: #0f3a31;
   --panel-2: #114238;
@@ -12,7 +11,7 @@
   --shadow: rgba(0,0,0,0.35);
 
   --ink: #e6ffef;
-  --ink-dim: #bde6cc;
+  --ink-dim: #aab6b1; /* slightly greyer to match the ref image */
 
   --btn: #155348;
   --btn-hover: #1a5e52;
@@ -60,7 +59,7 @@ html, body {
   place-items: center;
 }
 
-/* Aspect-ratio calculator that maximizes within viewport padding */
+/* Aspect-ratio calculator */
 #calculator{
   aspect-ratio: 3 / 4;
   width: min(
@@ -77,22 +76,55 @@ html, body {
   overflow: hidden;
 }
 
-/* Display box */
+/* Display area */
 .display{
+  display: grid;
+  align-items: center;
+  padding: clamp(10px, 2.3vmin, 18px);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0)),
+    linear-gradient(180deg, #0f3f35, #0d352d);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Inner bordered screen */
+.display-inner{
+  width: 100%;
+  height: 100%;
+  border: 2px solid rgba(184, 246, 222, 0.28);
+  border-radius: calc(var(--radius-md) - 4px);
+  padding: clamp(8px, 1.8vmin, 14px);
+  background: linear-gradient(180deg, #0e372f 0%, #0c2f28 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.05),
+    inset 0 -6px 18px rgba(0,0,0,0.3);
+  display: grid;
+  grid-template-rows: auto 1fr; /* history over value */
+  gap: 2px;
+}
+
+/* History: small, grey, tight, right-aligned */
+.history{
+  color: var(--ink-dim);
+  font: 600 clamp(10px, 1.8vmin, 14px) / 1.2 var(--font-ui);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip; /* keep it tight like the ref */
+}
+
+/* Value: big, bold, right-aligned */
+.value{
   display: flex;
   align-items: end;
   justify-content: end;
-  padding: clamp(16px, 3vmin, 28px);
-  font: 700 clamp(24px, 7vmin, 48px) / 1 var(--font-num);
+  font: 700 clamp(26px, 7.2vmin, 50px) / 1 var(--font-num);
   color: var(--ink);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0)) ,
-    linear-gradient(180deg, #0f3f35, #0d352d);
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  letter-spacing: 0.3px;
   text-shadow: 0 1px 0 rgba(0,0,0,0.4);
 }
 
-/* Keypad grid box */
+/* Keys grid */
 .keys{
   padding: var(--spacing);
   display: grid;
@@ -141,20 +173,19 @@ html, body {
 .key.eq:hover{ background: var(--eq-hover); }
 .key.eq:active{ background: var(--eq-active); }
 
-/* 0 spans two columns like many physical calculators */
+/* 0 spans two columns */
 .key.zero{
   grid-column: span 2;
   justify-content: start;
   padding-inline: clamp(16px, 2.5vmin, 20px);
 }
 
-/* Slightly rounder focus ring for keyboard nav */
+/* Focus ring */
 .key:focus-visible{
   outline: 2px solid #b8f6de;
   outline-offset: 2px;
 }
 
-/* Landscape can breathe a bit wider */
 @media (orientation: landscape){
   #calculator { aspect-ratio: 4 / 3; }
 }
