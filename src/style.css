@@ -1,10 +1,9 @@
 :root{
-  --bg: #0b2b24;
-
-  /* Insets from the window edges (tweak these to match your mock precisely) */
+  /* Keep your current margins; adjust here if needed */
   --pad-inline: 30vw; /* left/right margin */
   --pad-block: 10vh;  /* top/bottom margin */
 
+  --bg: #0b2b24;
   --panel: #0f3a31;
   --panel-2: #114238;
   --bevel: rgba(255,255,255,0.06);
@@ -35,8 +34,12 @@
   --gap: clamp(6px, 1.2vmin, 10px);
   --spacing: clamp(10px, 2vmin, 16px);
 
+  /* Fonts */
   --font-num: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-ui: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+
+  /* Adaptive value font scaling (JS writes into this) */
+  --value-size: 7.2vmin; /* default */
 }
 
 *,
@@ -59,7 +62,7 @@ html, body {
   place-items: center;
 }
 
-/* Calculator EXACTLY fills the inner box (no aspect-ratio constraint) */
+/* Calculator fits the inner rectangle */
 #calculator{
   width: calc(100vw - 2 * var(--pad-inline));
   height: calc(100svh - 2 * var(--pad-block));
@@ -73,7 +76,7 @@ html, body {
   overflow: hidden;
 }
 
-/* Display area */
+/* Display */
 .display{
   display: grid;
   align-items: center;
@@ -84,7 +87,7 @@ html, body {
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
-/* Inner bordered screen with history above value */
+/* Inner screen */
 .display-inner{
   width: 100%;
   height: 100%;
@@ -96,7 +99,7 @@ html, body {
     inset 0 1px 0 rgba(255,255,255,0.05),
     inset 0 -6px 18px rgba(0,0,0,0.3);
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr; /* history over value */
   gap: 2px;
 }
 
@@ -109,17 +112,22 @@ html, body {
   text-overflow: clip;
 }
 
+/* ADAPTIVE value font:
+   JS sets --value-size (in vmin). We clamp with min/max px to keep it legible. */
 .value{
   display: flex;
   align-items: end;
   justify-content: end;
-  font: 700 clamp(26px, 7.2vmin, 50px) / 1 var(--font-num);
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-size: clamp(22px, var(--value-size), 64px);
+  line-height: 1;
   color: var(--ink);
   letter-spacing: 0.3px;
   text-shadow: 0 1px 0 rgba(0,0,0,0.4);
 }
 
-/* Keys */
+/* Keys: 4 columns x 5 rows; '=' spans bottom 2 columns */
 .keys{
   padding: var(--spacing);
   display: grid;
@@ -129,13 +137,14 @@ html, body {
   background: linear-gradient(180deg, #0f3a31, #0c2f28);
 }
 
+/* Buttons — DOUBLE font size */
 .key{
   appearance: none;
   border: 0;
   border-radius: var(--radius-md);
   background: var(--btn);
   color: var(--ink);
-  font: 600 clamp(14px, 2.3vmin, 18px) / 1 var(--font-ui);
+  font: 800 clamp(22px, 4.6vmin, 36px) / 1 var(--font-ui);
   box-shadow:
     0 8px 18px rgba(0,0,0,0.35),
     inset 0 1px 0 var(--bevel);
@@ -153,6 +162,7 @@ html, body {
     0 6px 12px rgba(0,0,0,0.45),
     inset 0 1px 0 var(--bevel);
 }
+
 .key.fn{ background: var(--fn); }
 .key.fn:hover{ background: var(--fn-hover); }
 .key.fn:active{ background: var(--fn-active); }
@@ -161,15 +171,13 @@ html, body {
 .key.op:hover{ background: var(--op-hover); }
 .key.op:active{ background: var(--op-active); }
 
-.key.eq{ background: var(--eq); }
+/* '=': largest button — span 2 columns on the bottom row */
+.key.eq{
+  background: var(--eq);
+  grid-column: span 2;
+}
 .key.eq:hover{ background: var(--eq-hover); }
 .key.eq:active{ background: var(--eq-active); }
-
-.key.zero{
-  grid-column: span 2;
-  justify-content: start;
-  padding-inline: clamp(16px, 2.5vmin, 20px);
-}
 
 .key:focus-visible{
   outline: 2px solid #b8f6de;
