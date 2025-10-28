@@ -22,22 +22,19 @@ const OP_CHARS = "+\u2212×÷"; // + − × ÷
 function isOpChar(c: string) { return OP_CHARS.includes(c); }
 function endsWithOp(s: string) { return s.length > 0 && isOpChar(s[s.length - 1]); }
 
-/* ---------- Adaptive font size for long input ---------- */
+/* ---------- Adaptive display font ---------- */
 function updateDisplayFont() {
   const len = (valueEl.textContent ?? "").length;
-  // Start shrinking after ~10 chars; never go below ~3.4vmin.
   let sizeVmin = 7.2; // baseline
   if (len > 10) sizeVmin = Math.max(3.4, 7.2 - (len - 10) * 0.35);
   (valueEl.parentElement as HTMLElement).style.setProperty("--value-size", sizeVmin + "vmin");
 }
 
-/* ---------- Current number helpers (for ±, dot, digit insert) ---------- */
+/* ---------- Current number helpers ---------- */
 function currentNumberBounds(s: string): [number, number] {
   if (s.length === 0) return [0,0];
-  let end = s.length;
-  let start = end - 1;
+  let end = s.length, start = end - 1;
   while (start >= 0 && ((s[start] >= "0" && s[start] <= "9") || s[start] === ".")) start--;
-  // attach unary '-' if present right before number or at start
   if (start >= 0 && s[start] === "-") {
     const before = s[start - 1];
     if (start === 0 || before === "(" || isOpChar(before ?? "")) start--;
@@ -89,26 +86,19 @@ function insertOp(which: Op) {
              which === "sub" ? "\u2212" :
              which === "mul" ? "×" : "÷";
   if (justEvaluated) { justEvaluated = false; }
-  if (expr === "0" && which !== "sub") return; // force a number before op (except unary '-')
+  if (expr === "0" && which !== "sub") return;
   if (endsWithOp(expr)) expr = expr.slice(0, -1) + ch;
   else expr += ch;
   render();
 }
 
-/* ---------- Parentheses UX ---------- */
-/* Most user-friendly: single "(" button; we auto-insert matching ")" on "=" if needed.
-   Keyboard ")" works directly, and we'll allow it if there is an unmatched "(". */
+/* ---------- Parentheses ---------- */
 function unmatchedLeftParens(s: string): number {
   let bal = 0;
-  for (const ch of s) {
-    if (ch === "(") bal++;
-    else if (ch === ")") bal = Math.max(0, bal - 1);
-  }
+  for (const ch of s) { if (ch === "(") bal++; else if (ch === ")") bal = Math.max(0, bal - 1); }
   return bal;
 }
 function insertLParen() {
-  // If expression is "0" or ends with operator or "(", insert "(".
-  // If it ends with a number or ")", implicitly insert a multiplication "×(" (nice UX).
   if (expr === "0") { expr = "("; }
   else if (endsWithOp(expr) || expr.endsWith("(")) expr += "(";
   else expr += "×(";
@@ -117,28 +107,18 @@ function insertLParen() {
 function insertRParen() {
   const need = unmatchedLeftParens(expr);
   if (need <= 0) return;
-  // If last char is operator or "(", avoid dangling operator before ')'
   if (endsWithOp(expr) || expr.endsWith("(")) expr = expr.slice(0, -1);
   expr += ")";
   render();
 }
 
-function clearAll() {
-  expr = "0";
-  historyText = "";
-  justEvaluated = false;
-  render();
-}
-
-/* ---------- Evaluation (shunting-yard with unary minus & parentheses) ---------- */
+/* ---------- Evaluation (unary minus + parentheses) ---------- */
 function normalizeForEval(s: string): string {
   let t = s.replace(/\u2212/g, "-").replace(/×/g, "*").replace(/÷/g, "/");
-  // trim trailing operator/dot/left paren
   while (/[+\-*/.(]$/.test(t)) t = t.slice(0, -1);
   if (!t.length) t = "0";
   return t;
 }
-
 function evalExprWithUnaryAndParens(s: string): number {
   type Tok = { type: "num"; v: number } | { type: "op"; v: string } | { type: "lpar" } | { type: "rpar" };
   const toks: Tok[] = [];
@@ -150,44 +130,27 @@ function evalExprWithUnaryAndParens(s: string): number {
     if (c === " ") { i++; continue; }
     if (c === "(") { toks.push({ type: "lpar" }); prev = "lpar"; i++; continue; }
     if (c === ")") { toks.push({ type: "rpar" }); prev = "rpar"; i++; continue; }
-
     if ("+-*/".includes(c)) {
       const isUnaryMinus = (c === "-" && (prev === "start" || prev === "op" || prev === "lpar"));
       if (isUnaryMinus) {
-        let j = i + 1;
-        if (s[j] === ".") j++;
+        let j = i + 1; if (s[j] === ".") j++;
         while (j < s.length && ((s[j] >= "0" && s[j] <= "9") || s[j] === ".")) j++;
         const num = Number(s.slice(i, j));
         if (!Number.isFinite(num)) return NaN;
         toks.push({ type: "num", v: num });
-        prev = "num";
-        i = j;
-      } else {
-        toks.push({ type: "op", v: c });
-        prev = "op";
-        i++;
-      }
-      continue;
+        prev = "num"; i = j; continue;
+      } else { toks.push({ type: "op", v: c }); prev = "op"; i++; continue; }
     }
-
     if ((c >= "0" && c <= "9") || c === ".") {
-      let j = i + 1;
-      while (j < s.length && ((s[j] >= "0" && s[j] <= "9") || s[j] === ".")) j++;
-      const num = Number(s.slice(i, j));
-      if (!Number.isFinite(num)) return NaN;
-      toks.push({ type: "num", v: num });
-      prev = "num";
-      i = j;
-      continue;
+      let j = i + 1; while (j < s.length && ((s[j] >= "0" && s[j] <= "9") || s[j] === ".")) j++;
+      const num = Number(s.slice(i, j)); if (!Number.isFinite(num)) return NaN;
+      toks.push({ type: "num", v: num }); prev = "num"; i = j; continue;
     }
-
     i++; // skip unknown
   }
 
   const prec: Record<string, number> = { "+":1, "-":1, "*":2, "/":2 };
-  const out: (number|string)[] = [];
-  const ops: string[] = [];
-
+  const out: (number|string)[] = []; const ops: string[] = [];
   for (const t of toks) {
     if (t.type === "num") out.push(t.v);
     else if (t.type === "op") {
@@ -197,9 +160,8 @@ function evalExprWithUnaryAndParens(s: string): number {
         else break;
       }
       ops.push(t.v);
-    } else if (t.type === "lpar") {
-      ops.push("(");
-    } else if (t.type === "rpar") {
+    } else if (t.type === "lpar") ops.push("(");
+    else if (t.type === "rpar") {
       while (ops.length && ops[ops.length-1] !== "(") out.push(ops.pop() as string);
       if (ops.length && ops[ops.length-1] === "(") ops.pop();
     }
@@ -212,46 +174,81 @@ function evalExprWithUnaryAndParens(s: string): number {
     else {
       const b = st.pop(); const a = st.pop();
       if (a === undefined || b === undefined) return NaN;
-      let r = 0;
-      switch (tok){
-        case "+": r = a + b; break;
-        case "-": r = a - b; break;
-        case "*": r = a * b; break;
-        case "/": r = b === 0 ? NaN : a / b; break;
-      }
-      st.push(r);
+      st.push(tok === "+" ? a + b : tok === "-" ? a - b : tok === "*" ? a * b : (b === 0 ? NaN : a / b));
     }
   }
   return st.length ? st[0] : NaN;
 }
-
-function fmt(n: number): string {
-  if (!Number.isFinite(n)) return "Error";
-  return n.toFixed(12).replace(/\.?0+$/,"");
-}
-
+function fmt(n: number): string { return (!Number.isFinite(n)) ? "Error" : n.toFixed(12).replace(/\.?0+$/,""); }
 function equals() {
-  // Auto-close any unmatched left parens for user-friendliness
   const missing = unmatchedLeftParens(expr);
-  let balanced = expr;
-  for (let i=0;i<missing;i++) balanced += ")";
-
+  let balanced = expr; for (let i=0;i<missing;i++) balanced += ")";
   const raw = balanced;
-  const norm = normalizeForEval(raw.replace(/\u2212/g, "-").replace(/×/g, "*").replace(/÷/g, "/"));
+  const norm = normalizeForEval(raw);
   const result = evalExprWithUnaryAndParens(norm);
   const out = fmt(result);
-  historyText = raw;  // keep the expression above
-  expr = out;         // show numeric result below
+  historyText = raw;
+  expr = out;
   justEvaluated = true;
   render();
 }
 
-/* Mystery idea #1: insert a random digit (keeps math valid) */
-function insertMystery() {
-  const d = Math.floor(Math.random() * 10).toString();
-  insertDigit(d);
+/* ---------- Mystery: randomize theme + random background image ---------- */
+function hsl(h: number, s: number, l: number, a = 1) {
+  return `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${a})`;
+}
+function clamp(n: number, min: number, max: number){ return Math.min(max, Math.max(min, n)); }
+
+function randomizeTheme() {
+  // 1) Random background photo sized to viewport
+  const w = Math.max(800, window.innerWidth);
+  const hgt = Math.max(600, window.innerHeight);
+  const url = `https://picsum.photos/${w}/${hgt}?random=${Date.now()}`;
+  document.body.style.backgroundImage = `url("${url}")`;
+  document.body.style.backgroundPosition = "center";
+  document.body.style.backgroundSize = "cover";
+  document.body.style.backgroundAttachment = "fixed";
+
+  // 2) Harmonized palette (single hue with offsets), semi-transparent for glass effect
+  const base = Math.random() * 360;
+  const panel   = hsl(base,             50, 18, 0.82);
+  const panel2  = hsl(base,             48, 14, 0.82);
+  const btn     = hsl(base + 6,         54, 22, 0.86);
+  const fn      = hsl(base - 6,         54, 20, 0.86);
+  const op      = hsl(base + 24,        56, 28, 0.88);
+  const eq      = hsl(base + 140,       62, 36, 0.92); // pop color
+
+  const root = document.documentElement.style;
+  root.setProperty("--panel", panel);
+  root.setProperty("--panel-2", panel2);
+  root.setProperty("--btn", btn);
+  root.setProperty("--fn", fn);
+  root.setProperty("--op", op);
+  root.setProperty("--eq", eq);
+
+  // 3) Ensure readable text: pick ink vs ink-dim based on panel luminance proxy
+  // lightness from panel color string (quick parse of "hsla(h, s%, l%, a)")
+  const match = panel.match(/hsla\(\d+,\s*\d+%\,\s*(\d+)%/);
+  const l = match ? parseFloat(match[1]) : 18;
+  if (l > 55) {
+    root.setProperty("--ink", "#0b1420");
+    root.setProperty("--ink-dim", "#273344");
+  } else {
+    root.setProperty("--ink", "#f6fff9");
+    root.setProperty("--ink-dim", "#d6e8e0");
+  }
+
+  // Subtle flash to indicate change
+  const calc = document.getElementById("calculator")!;
+  calc.animate([{ filter: "brightness(1.2)" }, { filter: "brightness(1.0)" }], { duration: 350, easing: "ease-out" });
 }
 
+/* ---------- Mystery (button) ---------- */
+function onMystery() {
+  randomizeTheme();
+}
+
+/* ---------- Dispatcher ---------- */
 function handlePress(key: string) {
   if (/^[0-9]$/.test(key)) return insertDigit(key);
   switch (key) {
@@ -265,7 +262,7 @@ function handlePress(key: string) {
     case "minus": return insertOp("sub");
     case "plus": return insertOp("add");
     case "equals": return equals();
-    case "mystery": return insertMystery();
+    case "mystery": return onMystery();
   }
 }
 
@@ -287,7 +284,7 @@ window.addEventListener("keydown", (e) => {
   if (k === "-") return insertOp("sub");
   if (k === "*" || k.toLowerCase() === "x") return insertOp("mul");
   if (k === "/") return insertOp("div");
-  if (k === "?") return insertMystery();
+  if (k === "?") return onMystery();
   if (k.toLowerCase() === "c" || k.toLowerCase() === "a") return clearAll();
 });
 

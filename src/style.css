@@ -1,32 +1,22 @@
 :root{
-  /* Keep your current margins; adjust here if needed */
-  --pad-inline: 30vw; /* left/right margin */
-  --pad-block: 10vh;  /* top/bottom margin */
+  --pad-inline: 30vw; /* left/right margin (yours) */
+  --pad-block: 10vh;  /* top/bottom margin (yours) */
 
   --bg: #0b2b24;
-  --panel: #0f3a31;
-  --panel-2: #114238;
+
+  /* Palette variables (JS will randomize these) */
+  --panel: rgba(15, 58, 49, 0.82);
+  --panel-2: rgba(17, 66, 56, 0.82);
+  --btn: rgba(21, 83, 72, 0.85);
+  --fn: rgba(14, 75, 64, 0.85);
+  --op: rgba(27, 111, 96, 0.88);
+  --eq: rgba(45, 156, 134, 0.92);
+
+  --ink: #e6ffef;        /* text */
+  --ink-dim: #cfe6de;    /* history */
+
   --bevel: rgba(255,255,255,0.06);
   --shadow: rgba(0,0,0,0.35);
-
-  --ink: #e6ffef;
-  --ink-dim: #aab6b1;
-
-  --btn: #155348;
-  --btn-hover: #1a5e52;
-  --btn-active: #11463d;
-
-  --fn: #0e4b40;
-  --fn-hover: #10564a;
-  --fn-active: #0a3c33;
-
-  --op: #1b6f60;
-  --op-hover: #1f7b6b;
-  --op-active: #166556;
-
-  --eq: #2d9c86;
-  --eq-hover: #31a892;
-  --eq-active: #278c79;
 
   --radius-lg: 20px;
   --radius-md: 14px;
@@ -34,23 +24,24 @@
   --gap: clamp(6px, 1.2vmin, 10px);
   --spacing: clamp(10px, 2vmin, 16px);
 
-  /* Fonts */
   --font-num: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-ui: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
 
-  /* Adaptive value font scaling (JS writes into this) */
-  --value-size: 7.2vmin; /* default */
+  /* Adaptive value font size, controlled by JS */
+  --value-size: 7.2vmin;
 }
 
-*,
-*::before,
-*::after { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   height: 100%;
   font-family: var(--font-ui);
-  background: radial-gradient(1200px 1200px at 10% -10%, #0e3a31 0%, #0b2b24 40%, #081f1a 100%);
+  /* We’ll set a random image on body via JS; keep a fallback color */
+  background: var(--bg);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
   color: var(--ink);
 }
 
@@ -62,11 +53,12 @@ html, body {
   place-items: center;
 }
 
-/* Calculator fits the inner rectangle */
+/* Calculator fills the inner box; semi-transparent with blur for readability */
 #calculator{
   width: calc(100vw - 2 * var(--pad-inline));
   height: calc(100svh - 2 * var(--pad-block));
-  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  background:
+    linear-gradient(180deg, var(--panel), var(--panel-2));
   border-radius: var(--radius-lg);
   box-shadow:
     0 24px 60px var(--shadow),
@@ -74,6 +66,10 @@ html, body {
   display: grid;
   grid-template-rows: 1fr 3fr; /* display + keys */
   overflow: hidden;
+
+  /* Visibility helpers on busy photos */
+  backdrop-filter: blur(8px) saturate(1.1) brightness(0.95);
+  -webkit-backdrop-filter: blur(8px) saturate(1.1) brightness(0.95);
 }
 
 /* Display */
@@ -83,7 +79,7 @@ html, body {
   padding: clamp(10px, 2.3vmin, 18px);
   background:
     linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0)),
-    linear-gradient(180deg, #0f3f35, #0d352d);
+    linear-gradient(180deg, color-mix(in oklab, var(--panel) 85%, #0000), color-mix(in oklab, var(--panel-2) 85%, #0000));
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
@@ -91,13 +87,15 @@ html, body {
 .display-inner{
   width: 100%;
   height: 100%;
-  border: 2px solid rgba(184, 246, 222, 0.28);
+  border: 2px solid rgba(184, 246, 222, 0.35);
   border-radius: calc(var(--radius-md) - 4px);
   padding: clamp(8px, 1.8vmin, 14px);
-  background: linear-gradient(180deg, #0e372f 0%, #0c2f28 100%);
+  background: linear-gradient(180deg,
+    color-mix(in oklab, var(--panel) 80%, #0000) 0%,
+    color-mix(in oklab, var(--panel-2) 80%, #0000) 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.05),
-    inset 0 -6px 18px rgba(0,0,0,0.3);
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    inset 0 -6px 18px rgba(0,0,0,0.35);
   display: grid;
   grid-template-rows: auto 1fr; /* history over value */
   gap: 2px;
@@ -112,8 +110,6 @@ html, body {
   text-overflow: clip;
 }
 
-/* ADAPTIVE value font:
-   JS sets --value-size (in vmin). We clamp with min/max px to keep it legible. */
 .value{
   display: flex;
   align-items: end;
@@ -124,20 +120,21 @@ html, body {
   line-height: 1;
   color: var(--ink);
   letter-spacing: 0.3px;
-  text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.45);
 }
 
-/* Keys: 4 columns x 5 rows; '=' spans bottom 2 columns */
+/* Keys: 4 columns x 5 rows; '=' spans bottom 2 columns (largest button) */
 .keys{
   padding: var(--spacing);
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-auto-rows: 1fr;
   gap: var(--gap);
-  background: linear-gradient(180deg, #0f3a31, #0c2f28);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--panel) 92%, #0000), color-mix(in oklab, var(--panel-2) 92%, #0000));
 }
 
-/* Buttons — DOUBLE font size */
+/* Buttons — DOUBLE-SIZED label */
 .key{
   appearance: none;
   border: 0;
@@ -154,9 +151,8 @@ html, body {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
-.key:hover{ background: var(--btn-hover); }
+.key:hover{ filter: brightness(1.06); }
 .key:active{
-  background: var(--btn-active);
   transform: translateY(1px) scale(0.99);
   box-shadow:
     0 6px 12px rgba(0,0,0,0.45),
@@ -164,21 +160,12 @@ html, body {
 }
 
 .key.fn{ background: var(--fn); }
-.key.fn:hover{ background: var(--fn-hover); }
-.key.fn:active{ background: var(--fn-active); }
-
 .key.op{ background: var(--op); }
-.key.op:hover{ background: var(--op-hover); }
-.key.op:active{ background: var(--op-active); }
 
-/* '=': largest button — span 2 columns on the bottom row */
 .key.eq{
   background: var(--eq);
   grid-column: span 2;
 }
-.key.eq:hover{ background: var(--eq-hover); }
-.key.eq:active{ background: var(--eq-active); }
-
 .key:focus-visible{
   outline: 2px solid #b8f6de;
   outline-offset: 2px;
