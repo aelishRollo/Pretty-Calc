@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <!-- Loading overlay for ? randomizer -->
+    <!-- Loading overlay for randomizer -->
     <div id="spinner" aria-hidden="true">
       <div class="spinner-ring" aria-label="Loading"></div>
     </div>
@@ -46,8 +46,11 @@
           <button class="key" data-key="3">3</button>
           <button class="key op" data-key="plus" aria-label="Plus">+</button>
 
-          <!-- Row 5: ? 0  = (wide) -->
-          <button class="key" data-key="mystery" aria-label="Mystery">?</button>
+          <!-- Row 5: 🎲 0  = (wide) -->
+          <button class="key" data-key="mystery" aria-label="Randomize Theme" title="Randomize Theme">
+            <span class="emoji-dice" aria-hidden="true">🎲</span>
+            <span class="sr-only">Randomize Theme</span>
+          </button>
           <button class="key" data-key="0" aria-label="Zero">0</button>
           <button class="key eq" data-key="equals" aria-label="Equals">=</button>
         </main>

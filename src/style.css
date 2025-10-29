@@ -2,16 +2,15 @@
   --pad-inline: 30vw;
   --pad-block: 10vh;
 
-  /* Base fallback (gets replaced by random photos) */
   --bg: #0b2b24;
 
-  /* More transparent so the image shines through */
-  --panel: rgba(15, 58, 49, 0.48);
-  --panel-2: rgba(17, 66, 56, 0.48);
-  --btn: rgba(21, 83, 72, 0.50);
-  --fn: rgba(14, 75, 64, 0.50);
-  --op: rgba(27, 111, 96, 0.54);
-  --eq: rgba(45, 156, 134, 0.62);
+  /* Lower alpha values vs last version for extra transparency */
+  --panel: rgba(15, 58, 49, 0.40);
+  --panel-2: rgba(17, 66, 56, 0.40);
+  --btn: rgba(21, 83, 72, 0.42);
+  --fn: rgba(14, 75, 64, 0.42);
+  --op: rgba(27, 111, 96, 0.46);
+  --eq: rgba(45, 156, 134, 0.54);
 
   --ink: #f6fff9;
   --ink-dim: #d6e8e0;
@@ -43,7 +42,7 @@ html, body {
   background: var(--bg) center / cover fixed no-repeat;
 }
 
-/* Loading overlay (unchanged from before) */
+/* Loading overlay */
 #spinner{
   position: fixed;
   inset: 0;
@@ -73,7 +72,7 @@ html, body {
   place-items: center;
 }
 
-/* Calculator: even more transparent + slightly stronger blur */
+/* Calculator container (semi-transparent with blur so bg shows through) */
 #calculator{
   width: calc(100vw - 2 * var(--pad-inline));
   height: calc(100svh - 2 * var(--pad-block));
@@ -95,7 +94,7 @@ html, body {
   padding: clamp(10px, 2.3vmin, 18px);
   background:
     linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0)),
-    linear-gradient(180deg, color-mix(in oklab, var(--panel) 72%, #0000), color-mix(in oklab, var(--panel-2) 72%, #0000));
+    linear-gradient(180deg, color-mix(in oklab, var(--panel) 68%, #0000), color-mix(in oklab, var(--panel-2) 68%, #0000));
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
@@ -103,12 +102,12 @@ html, body {
 .display-inner{
   width: 100%;
   height: 100%;
-  border: 2px solid rgba(255, 255, 255, 0.33);
+  border: 2px solid rgba(255, 255, 255, 0.30);
   border-radius: calc(var(--radius-md) - 4px);
   padding: clamp(8px, 1.8vmin, 14px);
   background: linear-gradient(180deg,
-    color-mix(in oklab, var(--panel) 60%, #0000) 0%,
-    color-mix(in oklab, var(--panel-2) 60%, #0000) 100%);
+    color-mix(in oklab, var(--panel) 56%, #0000) 0%,
+    color-mix(in oklab, var(--panel-2) 56%, #0000) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.06),
     inset 0 -6px 18px rgba(0,0,0,0.35);
@@ -148,11 +147,11 @@ html, body {
   gap: var(--gap);
   background:
     linear-gradient(180deg,
-      color-mix(in oklab, var(--panel) 80%, #0000),
-      color-mix(in oklab, var(--panel-2) 80%, #0000));
+      color-mix(in oklab, var(--panel) 76%, #0000),
+      color-mix(in oklab, var(--panel-2) 76%, #0000));
 }
 
-/* Buttons (big labels) */
+/* Buttons */
 .key{
   appearance: none;
   border: 0;
@@ -180,4 +179,22 @@ html, body {
 .key:focus-visible{
   outline: 2px solid #b8f6de;
   outline-offset: 2px;
+}
+
+/* Bigger, high-contrast emoji dice; slight shadow so it stands out on any theme */
+.emoji-dice{
+  font-size: 2.1em;          /* larger than the button text */
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.55));
+  display: inline-block;
+  translate: 0 1px;          /* tiny vertical nudge to center visually */
+}
+
+/* Screen-reader only helper */
+.sr-only{
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,1px,1px);
+  white-space: nowrap; border: 0;
 }

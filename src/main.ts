@@ -77,7 +77,7 @@ function insertOp(which: Op) {
   render();
 }
 
-/* ---------- Parentheses: () toggle + keyboard-friendly ---------- */
+/* ---------- Parentheses: () toggle (no implicit multiply) ---------- */
 function unmatchedLeftParens(s: string): number {
   let bal = 0; for (const ch of s) { if (ch === "(") bal++; else if (ch === ")") bal = Math.max(0, bal - 1); } return bal;
 }
@@ -89,26 +89,14 @@ function parenToggle() {
     else { expr += ")"; }
   } else {
     if (expr === "0") expr = "(";
-    else if (endsWithOp(expr) || expr.endsWith("(")) expr += "(";
-    else expr += "×(";
+    else expr += "(";
   }
   render();
 }
-function insertLParen() {
-  if (expr === "0") expr = "(";
-  else if (endsWithOp(expr) || expr.endsWith("(")) expr += "(";
-  else expr += "×(";
-  render();
-}
-function insertRParen() {
-  const need = unmatchedLeftParens(expr);
-  if (need <= 0) return;
-  if (endsWithOp(expr) || expr.endsWith("(")) expr = expr.slice(0, -1);
-  expr += ")";
-  render();
-}
+function insertLParen() { if (expr === "0") expr = "("; else expr += "("; render(); }
+function insertRParen() { const need = unmatchedLeftParens(expr); if (need <= 0) return; if (endsWithOp(expr) || expr.endsWith("(")) expr = expr.slice(0, -1); expr += ")"; render(); }
 
-/* ---------- Evaluation (unary minus + parentheses) ---------- */
+/* ---------- Evaluation ---------- */
 function normalizeForEval(s: string): string {
   let t = s.replace(/\u2212/g, "-").replace(/×/g, "*").replace(/÷/g, "/");
   while (/[+\-*/.(]$/.test(t)) t = t.slice(0, -1);
@@ -172,25 +160,23 @@ function equals() {
   historyText = raw; expr = out; justEvaluated = true; render();
 }
 
-/* ---------- Mystery: palette + background image prefetch queue ---------- */
-function hsl(h: number, s: number, l: number, a = 1) {
-  return `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${a})`;
-}
+/* =========================
+   ROBUST PREFETCH (BLOB) QUEUE
+   ========================= */
+function hsl(h: number, s: number, l: number, a = 1) { return `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${a})`; }
 function showSpinner(on: boolean) {
   if (!spinnerEl) return;
   spinnerEl.classList.toggle("active", on);
   spinnerEl.setAttribute("aria-hidden", on ? "false" : "true");
 }
-
-/* Harmonized-but-random palette with varied ranges */
 function randomIn(min: number, max: number){ return Math.random() * (max - min) + min; }
 function randomInt(min: number, max: number){ return Math.floor(randomIn(min, max)); }
+
 function randomizePalette() {
   const theme = ["deep","mid","light"][randomInt(0,3)];
   const baseHue = randomIn(0, 360);
   const satBase = theme === "deep" ? randomIn(44, 58) : theme === "mid" ? randomIn(38, 52) : randomIn(30, 45);
   const lightBase = theme === "deep" ? randomIn(12, 20) : theme === "mid" ? randomIn(18, 26) : randomIn(26, 34);
-
   const panel   = hsl(baseHue,                   satBase,                 lightBase, 0.48);
   const panel2  = hsl(baseHue + randomIn(-8,8),  satBase - randomIn(0,6), lightBase - randomIn(2,6), 0.48);
   const btn     = hsl(baseHue + randomIn(4,12),  satBase + randomIn(0,6), lightBase + randomIn(2,6), 0.50);
@@ -206,77 +192,125 @@ function randomizePalette() {
   root.setProperty("--op", op);
   root.setProperty("--eq", eq);
 
-  // Contrast-aware ink
   const lMatch = panel.match(/hsla\(\d+,\s*\d+%\,\s*(\d+)%/);
   const l = lMatch ? parseFloat(lMatch[1]) : 18;
   if (l > 55) { root.setProperty("--ink", "#0b1420"); root.setProperty("--ink-dim", "#273344"); }
   else { root.setProperty("--ink", "#f6fff9"); root.setProperty("--ink-dim", "#d6e8e0"); }
 }
 
-/* Image prefetch queue */
-const imageQueue: string[] = [];
-let prefetching = 0;
-const INITIAL_QUEUE_SIZE = 5;
+/** Blob-based prefetcher (never re-requests on swap) */
+class BlobPrefetcher {
+  private TARGET = 10;
+  private ready: string[] = [];          // object URLs
+  private inFlight = 0;
+  private waiters: Array<(url: string) => void> = [];
+  private toppingUp = false;
+  private lastApplied: string | null = null; // for URL.revokeObjectURL
 
-function makePicsumUrl() {
-  const w = Math.max(800, window.innerWidth);
-  const h = Math.max(600, window.innerHeight);
-  return `https://picsum.photos/${w}/${h}?random=${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  constructor(target = 10) { this.TARGET = target; }
+
+  private makePicsumUrl() {
+    const w = Math.max(800, window.innerWidth);
+    const h = Math.max(600, window.innerHeight);
+    return `https://picsum.photos/${w}/${h}?random=${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  private deliver(url: string) {
+    const waiter = this.waiters.shift();
+    if (waiter) waiter(url);
+    else if (this.ready.length < this.TARGET) this.ready.push(url);
+  }
+
+  /** Fetch to blob, create object URL, and decode once to ensure it’s render-ready */
+  private async prefetchOne(): Promise<void> {
+    this.inFlight++;
+    try {
+      const res = await fetch(this.makePicsumUrl(), { cache: "no-store", mode: "cors", credentials: "omit" });
+      if (!res.ok) throw new Error("image fetch failed");
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+
+      // Decode via Image.decode() to ensure paint-ready (no jank on apply)
+      await new Promise<void>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("decode failed"));
+        img.src = objUrl;
+        (img as any).decoding = "async";
+        (img as any).referrerPolicy = "no-referrer";
+      }).catch(() => { /* if decode fails, still deliver; browser will handle */ });
+
+      this.deliver(objUrl);
+    } catch {
+      // swallow errors
+    } finally {
+      this.inFlight--;
+    }
+  }
+
+  async topUp() {
+    if (this.toppingUp) return;
+    this.toppingUp = true;
+    try {
+      const deficit = this.TARGET - (this.ready.length + this.inFlight);
+      if (deficit > 0) await Promise.all(Array.from({ length: deficit }, () => this.prefetchOne()));
+    } finally {
+      this.toppingUp = false;
+      if (this.ready.length + this.inFlight < this.TARGET) queueMicrotask(() => this.topUp());
+    }
+  }
+
+  /** Consume ASAP; wait for in-flight before giving up */
+  async consumeOrWait(timeoutMs = 6000): Promise<string | null> {
+    const url = this.ready.shift();
+    if (url) return url;
+
+    if (this.inFlight > 0) {
+      return new Promise<string | null>((resolve) => {
+        const t = window.setTimeout(() => resolve(null), timeoutMs);
+        this.waiters.push((u) => { window.clearTimeout(t); resolve(u); });
+      });
+    }
+    return null;
+  }
+
+  applied(url: string) {
+    // Revoke previously applied to avoid leaks
+    if (this.lastApplied) URL.revokeObjectURL(this.lastApplied);
+    this.lastApplied = url;
+  }
 }
-function prefetchOne(): Promise<void> {
-  prefetching++;
-  return new Promise((resolve) => {
-    const url = makePicsumUrl();
-    const img = new Image();
-    img.onload = () => { imageQueue.push(url); prefetching--; resolve(); };
-    img.onerror = () => { prefetching--; resolve(); }; // ignore errors silently
-    img.referrerPolicy = "no-referrer";
-    img.src = url;
-  });
-}
-async function prefetchN(n: number) {
-  await Promise.all(Array.from({length: n}, () => prefetchOne()));
-}
+
+const prefetcher = new BlobPrefetcher(10);
+
 function setBackground(url: string) {
   document.body.style.backgroundImage = `url("${url}")`;
   document.body.style.backgroundPosition = "center";
   document.body.style.backgroundSize = "cover";
   document.body.style.backgroundAttachment = "fixed";
+  prefetcher.applied(url);
 }
 
-async function setBackgroundFromQueueOrFetch() {
-  const url = imageQueue.shift();
-  if (url) {
-    setBackground(url);
-    return;
-  }
-  // Fallback: fetch one on-demand (rare), show spinner while waiting
+async function setBackgroundSmart() {
+  let url = await prefetcher.consumeOrWait(6000);
+  if (url) { setBackground(url); return; }
+
+  // Last resort: urgent top-up (still blob-based, so no flicker after)
   showSpinner(true);
-  const tempUrl = makePicsumUrl();
-  await new Promise<void>((resolve) => {
-    const img = new Image();
-    img.onload = () => { setBackground(tempUrl); resolve(); };
-    img.onerror = () => resolve();
-    img.referrerPolicy = "no-referrer";
-    img.src = tempUrl;
-  });
+  await prefetcher.topUp();
+  url = await prefetcher.consumeOrWait(6000);
   showSpinner(false);
+
+  if (url) setBackground(url);
 }
 
-/* Mystery click */
+/* ---------- Mystery click ---------- */
 async function onMystery() {
-  // 1) Apply new palette immediately (snappy)
   randomizePalette();
-
-  // 2) Swap background instantly from queue (spinner only if empty)
-  await setBackgroundFromQueueOrFetch();
-
-  // 3) Visual feedback
+  await setBackgroundSmart();
   const calc = document.getElementById("calculator")!;
   calc.animate([{ filter: "brightness(1.2)" }, { filter: "brightness(1.0)" }], { duration: 350, easing: "ease-out" });
-
-  // 4) Refill the queue by 1 (don’t await)
-  void prefetchOne();
+  void prefetcher.topUp();
 }
 
 /* ---------- Dispatcher ---------- */
@@ -296,12 +330,12 @@ function handlePress(key: string) {
   }
 }
 
-/* Clear/all (kept from previous) */
+/* Clear/all */
 function clearAll() { expr = "0"; historyText = ""; justEvaluated = false; render(); }
 
-/* Events */
+/* Events (click fix: use closest button) */
 keysEl.addEventListener("click", (e) => {
-  const t = e.target as HTMLElement | null;
+  const t = (e.target as HTMLElement | null)?.closest("button[data-key]") as HTMLElement | null;
   const key = t?.getAttribute?.("data-key");
   if (key) handlePress(key);
 });
@@ -321,7 +355,7 @@ window.addEventListener("keydown", (e) => {
   if (k.toLowerCase() === "c" || k.toLowerCase() === "a") return clearAll();
 });
 
-/* Bootstrap: prefetch INITIAL_QUEUE_SIZE images at load */
-void prefetchN(INITIAL_QUEUE_SIZE);
+/* Bootstrap: warm the cache only (no UI changes until user clicks) */
+void prefetcher.topUp();
 
 render();
