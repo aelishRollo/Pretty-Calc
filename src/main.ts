@@ -1,17 +1,94 @@
 type Op = "add" | "sub" | "mul" | "div";
+type KeypadMode = "main" | "abc" | "func";
+type AngleMode = "deg" | "rad";
+type HistoryLine = { input: string; output: string };
+type ModeKey = { label: string; token: string };
+
 const valueEl = document.getElementById("value") as HTMLElement;
 const historyEl = document.getElementById("history") as HTMLElement;
 const keysEl = document.querySelector(".keys") as HTMLElement;
 const spinnerEl = document.getElementById("spinner") as HTMLElement;
+const displayControlsEl = document.querySelector(".display-controls") as HTMLElement | null;
+const modeKeysEl = document.getElementById("modeKeys") as HTMLElement | null;
+const angleBtn = document.getElementById("angleBtn") as HTMLButtonElement | null;
+const fracBtn = document.getElementById("fracBtn") as HTMLButtonElement | null;
 
-/** Expression shown while typing; becomes result string after '=' */
+/** Active expression shown while typing */
 let expr = "0";
 let historyText = "";
 let justEvaluated = false;
 
+/** Ticket #1 state */
+const lines: HistoryLine[] = [];
+let ansValue = 0;
+let keypadMode: KeypadMode = "main";
+let angleMode: AngleMode = "deg";
+let fractionOutput = false;
+
+const MODE_KEYS: Record<KeypadMode, ModeKey[]> = {
+  main: [
+    { label: "ANS", token: "ans" },
+    { label: "(", token: "(" },
+    { label: ")", token: ")" },
+    { label: ".", token: "." },
+    { label: "÷", token: "÷" },
+  ],
+  abc: [
+    { label: "a", token: "a" },
+    { label: "b", token: "b" },
+    { label: "c", token: "c" },
+    { label: "x", token: "x" },
+    { label: "y", token: "y" },
+  ],
+  func: [
+    { label: "sin", token: "sin(" },
+    { label: "cos", token: "cos(" },
+    { label: "tan", token: "tan(" },
+    { label: "√", token: "sqrt(" },
+    { label: "π", token: "pi" },
+  ],
+};
+
 function setValue(s: string) { valueEl.textContent = s; updateDisplayFont(); }
 function setHistory(s: string) { historyEl.textContent = s; }
-function render() { setValue(expr); setHistory(historyText); }
+function renderControls() {
+  if (!displayControlsEl) return;
+  const buttons = Array.from(displayControlsEl.querySelectorAll<HTMLButtonElement>(".ctrl-btn"));
+  for (const btn of buttons) {
+    const key = btn.dataset.key;
+    const isActive =
+      (key === "modeMain" && keypadMode === "main") ||
+      (key === "modeAbc" && keypadMode === "abc") ||
+      (key === "modeFunc" && keypadMode === "func");
+    btn.classList.toggle("active", isActive);
+  }
+  if (angleBtn) {
+    angleBtn.textContent = angleMode.toUpperCase();
+    angleBtn.classList.toggle("active", angleMode === "rad");
+  }
+  if (fracBtn) {
+    fracBtn.textContent = fractionOutput ? "FRAC" : "DEC";
+    fracBtn.classList.toggle("active", fractionOutput);
+  }
+
+  if (modeKeysEl) {
+    const buttons = Array.from(modeKeysEl.querySelectorAll<HTMLButtonElement>(".ctrl-btn-mini"));
+    const keys = MODE_KEYS[keypadMode];
+    for (let i = 0; i < buttons.length; i++) {
+      const btn = buttons[i];
+      const item = keys[i];
+      if (!btn || !item) continue;
+      btn.textContent = item.label;
+      btn.setAttribute("aria-label", `Insert ${item.label}`);
+    }
+  }
+}
+function renderHistory() {
+  const status = `${keypadMode.toUpperCase()} ${angleMode.toUpperCase()} ${fractionOutput ? "FRAC" : "DEC"}`;
+  const recentLines = lines.slice(-3).map((line) => `${line.input} = ${line.output}`);
+  historyText = [status, ...recentLines].join("\n");
+}
+function render() { renderControls(); renderHistory(); setValue(expr); setHistory(historyText); }
 
 const OP_CHARS = "+\u2212×÷";
 function isOpChar(c: string) { return OP_CHARS.includes(c); }
@@ -27,7 +104,7 @@ function updateDisplayFont() {
 
 /* ---------- Current number helpers ---------- */
 function currentNumberBounds(s: string): [number, number] {
-  if (s.length === 0) return [0,0];
+  if (s.length === 0) return [0, 0];
   let end = s.length, start = end - 1;
   while (start >= 0 && ((s[start] >= "0" && s[start] <= "9") || s[start] === ".")) start--;
   if (start >= 0 && s[start] === "-") {
@@ -45,6 +122,12 @@ function insertDigit(d: string) {
   const { raw, a, b } = getCurrentNumber(expr);
   if (expr === "0") expr = d;
   else expr = replaceRange(expr, a, b, raw + d);
+  render();
+}
+function insertToken(tok: string) {
+  if (justEvaluated) { expr = "0"; justEvaluated = false; }
+  if (expr === "0") expr = tok;
+  else expr += tok;
   render();
 }
 function insertDot() {
@@ -96,68 +179,81 @@ function parenToggle() {
 function insertLParen() { if (expr === "0") expr = "("; else expr += "("; render(); }
 function insertRParen() { const need = unmatchedLeftParens(expr); if (need <= 0) return; if (endsWithOp(expr) || expr.endsWith("(")) expr = expr.slice(0, -1); expr += ")"; render(); }
 
-/* ---------- Evaluation ---------- */
+/* ---------- Ticket #1 evaluation ---------- */
+function gcd(a: number, b: number): number {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y !== 0) { const t = y; y = x % y; x = t; }
+  return x || 1;
+}
+function maybeFractionFromInput(raw: string): string | null {
+  const m = raw.trim().match(/^(-?\d+)\s*\/\s*(-?\d+)$/);
+  if (!m) return null;
+  const n = Number(m[1]), d = Number(m[2]);
+  if (!Number.isInteger(n) || !Number.isInteger(d) || d === 0) return null;
+  const sign = (n < 0) !== (d < 0) ? "-" : "";
+  const an = Math.abs(n), ad = Math.abs(d);
+  const div = gcd(an, ad);
+  return `${sign}${an / div}/${ad / div}`;
+}
 function normalizeForEval(s: string): string {
-  let t = s.replace(/\u2212/g, "-").replace(/×/g, "*").replace(/÷/g, "/");
+  let t = s
+    .replace(/\u2212/g, "-")
+    .replace(/×/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/\bans\b/gi, `(${ansValue})`)
+    .replace(/\bpi\b/gi, `${Math.PI}`)
+    .replace(/\bsin\s*\(/gi, "__sin(")
+    .replace(/\bcos\s*\(/gi, "__cos(")
+    .replace(/\btan\s*\(/gi, "__tan(")
+    .replace(/\bsqrt\s*\(/gi, "__sqrt(")
+    .replace(/\^/g, "**");
   while (/[+\-*/.(]$/.test(t)) t = t.slice(0, -1);
   return t.length ? t : "0";
 }
-function evalExprWithUnaryAndParens(s: string): number {
-  type Tok = { type: "num"; v: number } | { type: "op"; v: string } | { type: "lpar" } | { type: "rpar" };
-  const toks: Tok[] = []; let i = 0; let prev: "start" | "num" | "op" | "lpar" | "rpar" = "start";
-  while (i < s.length) {
-    const c = s[i];
-    if (c === " ") { i++; continue; }
-    if (c === "(") { toks.push({ type: "lpar" }); prev = "lpar"; i++; continue; }
-    if (c === ")") { toks.push({ type: "rpar" }); prev = "rpar"; i++; continue; }
-    if ("+-*/".includes(c)) {
-      const isUnaryMinus = (c === "-" && (prev === "start" || prev === "op" || prev === "lpar"));
-      if (isUnaryMinus) {
-        let j = i + 1; if (s[j] === ".") j++;
-        while (j < s.length && ((s[j] >= "0" && s[j] <= "9") || s[j] === ".")) j++;
-        const num = Number(s.slice(i, j)); if (!Number.isFinite(num)) return NaN;
-        toks.push({ type: "num", v: num }); prev = "num"; i = j; continue;
-      } else { toks.push({ type: "op", v: c }); prev = "op"; i++; continue; }
-    }
-    if ((c >= "0" && c <= "9") || c === ".") {
-      let j = i + 1; while (j < s.length && ((s[j] >= "0" && s[j] <= "9") || s[j] === ".")) j++;
-      const num = Number(s.slice(i, j)); if (!Number.isFinite(num)) return NaN;
-      toks.push({ type: "num", v: num }); prev = "num"; i = j; continue;
-    }
-    i++;
+function evaluate(raw: string): number {
+  const norm = normalizeForEval(raw);
+  const trigArg = (x: number) => (angleMode === "deg" ? (x * Math.PI) / 180 : x);
+  try {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      "__sin",
+      "__cos",
+      "__tan",
+      "__sqrt",
+      `return (${norm});`,
+    ) as (sin: (x: number) => number, cos: (x: number) => number, tan: (x: number) => number, sqrt: (x: number) => number) => number;
+    const out = fn(
+      (x) => Math.sin(trigArg(x)),
+      (x) => Math.cos(trigArg(x)),
+      (x) => Math.tan(trigArg(x)),
+      (x) => Math.sqrt(x),
+    );
+    return Number.isFinite(out) ? out : NaN;
+  } catch {
+    return NaN;
   }
-  const prec: Record<string, number> = { "+":1, "-":1, "*":2, "/":2 };
-  const out: (number|string)[] = []; const ops: string[] = [];
-  for (const t of toks) {
-    if (t.type === "num") out.push(t.v);
-    else if (t.type === "op") {
-      while (ops.length) {
-        const top = ops[ops.length-1];
-        if ("+-*/".includes(top) && prec[top] >= prec[t.v]) out.push(ops.pop() as string); else break;
-      }
-      ops.push(t.v);
-    } else if (t.type === "lpar") ops.push("(");
-    else if (t.type === "rpar") { while (ops.length && ops[ops.length-1] !== "(") out.push(ops.pop() as string); if (ops.length && ops[ops.length-1] === "(") ops.pop(); }
-  }
-  while (ops.length) out.push(ops.pop() as string);
-  const st: number[] = [];
-  for (const tok of out) {
-    if (typeof tok === "number") st.push(tok);
-    else { const b = st.pop(), a = st.pop(); if (a===undefined||b===undefined) return NaN;
-      st.push(tok === "+" ? a + b : tok === "-" ? a - b : tok === "*" ? a * b : (b === 0 ? NaN : a / b));
-    }
-  }
-  return st.length ? st[0] : NaN;
 }
-function fmt(n: number): string { return (!Number.isFinite(n)) ? "Error" : n.toFixed(12).replace(/\.?0+$/,""); }
+function fmt(raw: string, n: number): string {
+  if (!Number.isFinite(n)) return "Error";
+  if (fractionOutput) {
+    const frac = maybeFractionFromInput(raw.replace(/\u2212/g, "-").replace(/×/g, "*").replace(/÷/g, "/"));
+    if (frac) return frac;
+  }
+  return n.toFixed(12).replace(/\.?0+$/, "");
+}
 function equals() {
   const missing = unmatchedLeftParens(expr);
-  let balanced = expr; for (let i=0;i<missing;i++) balanced += ")";
+  let balanced = expr; for (let i = 0; i < missing; i++) balanced += ")";
   const raw = balanced;
-  const norm = normalizeForEval(raw);
-  const result = evalExprWithUnaryAndParens(norm);
-  const out = fmt(result);
-  historyText = raw; expr = out; justEvaluated = true; render();
+  const result = evaluate(raw);
+  const out = fmt(raw, result);
+  lines.push({ input: raw, output: out });
+  if (lines.length > 30) lines.shift();
+  if (Number.isFinite(result)) ansValue = result;
+  expr = out;
+  justEvaluated = true;
+  render();
 }
 
 /* =========================
@@ -169,20 +265,20 @@ function showSpinner(on: boolean) {
   spinnerEl.classList.toggle("active", on);
   spinnerEl.setAttribute("aria-hidden", on ? "false" : "true");
 }
-function randomIn(min: number, max: number){ return Math.random() * (max - min) + min; }
-function randomInt(min: number, max: number){ return Math.floor(randomIn(min, max)); }
+function randomIn(min: number, max: number) { return Math.random() * (max - min) + min; }
+function randomInt(min: number, max: number) { return Math.floor(randomIn(min, max)); }
 
 function randomizePalette() {
-  const theme = ["deep","mid","light"][randomInt(0,3)];
+  const theme = ["deep", "mid", "light"][randomInt(0, 3)];
   const baseHue = randomIn(0, 360);
   const satBase = theme === "deep" ? randomIn(44, 58) : theme === "mid" ? randomIn(38, 52) : randomIn(30, 45);
   const lightBase = theme === "deep" ? randomIn(12, 20) : theme === "mid" ? randomIn(18, 26) : randomIn(26, 34);
-  const panel   = hsl(baseHue,                   satBase,                 lightBase, 0.48);
-  const panel2  = hsl(baseHue + randomIn(-8,8),  satBase - randomIn(0,6), lightBase - randomIn(2,6), 0.48);
-  const btn     = hsl(baseHue + randomIn(4,12),  satBase + randomIn(0,6), lightBase + randomIn(2,6), 0.50);
-  const fn      = hsl(baseHue - randomIn(4,12),  satBase + randomIn(0,6), lightBase + randomIn(0,4), 0.50);
-  const op      = hsl(baseHue + randomIn(16,28), satBase + randomIn(2,8), lightBase + randomIn(6,10), 0.54);
-  const eq      = hsl(baseHue + randomIn(120,180), satBase + randomIn(8,16), lightBase + randomIn(10,16), 0.62);
+  const panel = hsl(baseHue, satBase, lightBase, 0.48);
+  const panel2 = hsl(baseHue + randomIn(-8, 8), satBase - randomIn(0, 6), lightBase - randomIn(2, 6), 0.48);
+  const btn = hsl(baseHue + randomIn(4, 12), satBase + randomIn(0, 6), lightBase + randomIn(2, 6), 0.50);
+  const fn = hsl(baseHue - randomIn(4, 12), satBase + randomIn(0, 6), lightBase + randomIn(0, 4), 0.50);
+  const op = hsl(baseHue + randomIn(16, 28), satBase + randomIn(2, 8), lightBase + randomIn(6, 10), 0.54);
+  const eq = hsl(baseHue + randomIn(120, 180), satBase + randomIn(8, 16), lightBase + randomIn(10, 16), 0.62);
 
   const root = document.documentElement.style;
   root.setProperty("--panel", panel);
@@ -198,14 +294,13 @@ function randomizePalette() {
   else { root.setProperty("--ink", "#f6fff9"); root.setProperty("--ink-dim", "#d6e8e0"); }
 }
 
-/** Blob-based prefetcher (never re-requests on swap) */
 class BlobPrefetcher {
   private TARGET = 10;
-  private ready: string[] = [];          // object URLs
+  private ready: string[] = [];
   private inFlight = 0;
   private waiters: Array<(url: string) => void> = [];
   private toppingUp = false;
-  private lastApplied: string | null = null; // for URL.revokeObjectURL
+  private lastApplied: string | null = null;
 
   constructor(target = 10) { this.TARGET = target; }
 
@@ -221,7 +316,6 @@ class BlobPrefetcher {
     else if (this.ready.length < this.TARGET) this.ready.push(url);
   }
 
-  /** Fetch to blob, create object URL, and decode once to ensure it’s render-ready */
   private async prefetchOne(): Promise<void> {
     this.inFlight++;
     try {
@@ -230,15 +324,14 @@ class BlobPrefetcher {
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
 
-      // Decode via Image.decode() to ensure paint-ready (no jank on apply)
       await new Promise<void>((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve();
         img.onerror = () => reject(new Error("decode failed"));
         img.src = objUrl;
-        (img as any).decoding = "async";
-        (img as any).referrerPolicy = "no-referrer";
-      }).catch(() => { /* if decode fails, still deliver; browser will handle */ });
+        (img as { decoding?: string }).decoding = "async";
+        (img as { referrerPolicy?: string }).referrerPolicy = "no-referrer";
+      }).catch(() => { });
 
       this.deliver(objUrl);
     } catch {
@@ -260,7 +353,6 @@ class BlobPrefetcher {
     }
   }
 
-  /** Consume ASAP; wait for in-flight before giving up */
   async consumeOrWait(timeoutMs = 6000): Promise<string | null> {
     const url = this.ready.shift();
     if (url) return url;
@@ -275,7 +367,6 @@ class BlobPrefetcher {
   }
 
   applied(url: string) {
-    // Revoke previously applied to avoid leaks
     if (this.lastApplied) URL.revokeObjectURL(this.lastApplied);
     this.lastApplied = url;
   }
@@ -295,7 +386,6 @@ async function setBackgroundSmart() {
   let url = await prefetcher.consumeOrWait(6000);
   if (url) { setBackground(url); return; }
 
-  // Last resort: urgent top-up (still blob-based, so no flicker after)
   showSpinner(true);
   await prefetcher.topUp();
   url = await prefetcher.consumeOrWait(6000);
@@ -308,8 +398,8 @@ async function setBackgroundSmart() {
 async function onMystery() {
   randomizePalette();
   await setBackgroundSmart();
-  const calc = document.getElementById("calculator")!;
-  calc.animate([{ filter: "brightness(1.2)" }, { filter: "brightness(1.0)" }], { duration: 350, easing: "ease-out" });
+  const calc = document.getElementById("calculator");
+  calc?.animate([{ filter: "brightness(1.2)" }, { filter: "brightness(1.0)" }], { duration: 350, easing: "ease-out" });
   void prefetcher.topUp();
 }
 
@@ -317,6 +407,12 @@ async function onMystery() {
 function handlePress(key: string) {
   if (/^[0-9]$/.test(key)) return insertDigit(key);
   switch (key) {
+    case "modeMain": keypadMode = "main"; return render();
+    case "modeAbc": keypadMode = "abc"; return render();
+    case "modeFunc": keypadMode = "func"; return render();
+    case "toggleAngle": angleMode = angleMode === "deg" ? "rad" : "deg"; return render();
+    case "toggleFrac": fractionOutput = !fractionOutput; return render();
+    case "ans": return insertToken("ans");
     case "dot": return insertDot();
     case "clear": return clearAll();
     case "sign": return toggleSign();
@@ -330,17 +426,65 @@ function handlePress(key: string) {
   }
 }
 
-/* Clear/all */
-function clearAll() { expr = "0"; historyText = ""; justEvaluated = false; render(); }
+function clearAll() {
+  expr = "0";
+  justEvaluated = false;
+  render();
+}
 
-/* Events (click fix: use closest button) */
+function insertFuncKeyFromMode(letter: string): boolean {
+  if (keypadMode !== "func") return false;
+  if (letter === "s") { insertToken("sin("); return true; }
+  if (letter === "c") { insertToken("cos("); return true; }
+  if (letter === "t") { insertToken("tan("); return true; }
+  if (letter === "q") { insertToken("sqrt("); return true; }
+  if (letter === "p") { insertToken("pi"); return true; }
+  return false;
+}
+
+function cycleMode() {
+  keypadMode = keypadMode === "main" ? "abc" : keypadMode === "abc" ? "func" : "main";
+  render();
+}
+
+function applyModeSlot(index: number) {
+  const slot = MODE_KEYS[keypadMode][index];
+  if (!slot) return;
+  if (slot.token === ".") return insertDot();
+  if (slot.token === "÷") return insertOp("div");
+  return insertToken(slot.token);
+}
+
+/* Events */
 keysEl.addEventListener("click", (e) => {
   const t = (e.target as HTMLElement | null)?.closest("button[data-key]") as HTMLElement | null;
   const key = t?.getAttribute?.("data-key");
   if (key) handlePress(key);
 });
+displayControlsEl?.addEventListener("click", (e) => {
+  const t = (e.target as HTMLElement | null)?.closest("button[data-key]") as HTMLElement | null;
+  const key = t?.getAttribute?.("data-key");
+  if (key) handlePress(key);
+});
+modeKeysEl?.addEventListener("click", (e) => {
+  const t = (e.target as HTMLElement | null)?.closest("button[data-key]") as HTMLElement | null;
+  const key = t?.getAttribute?.("data-key");
+  if (!key || !key.startsWith("modeSlot")) return;
+  const idx = Number(key.replace("modeSlot", ""));
+  if (!Number.isInteger(idx)) return;
+  applyModeSlot(idx);
+});
 window.addEventListener("keydown", (e) => {
   const k = e.key;
+  const lower = k.toLowerCase();
+
+  if (e.altKey && lower === "d") { e.preventDefault(); angleMode = angleMode === "deg" ? "rad" : "deg"; return render(); }
+  if (e.altKey && lower === "f") { e.preventDefault(); fractionOutput = !fractionOutput; return render(); }
+  if (e.altKey && k === "1") { e.preventDefault(); keypadMode = "main"; return render(); }
+  if (e.altKey && k === "2") { e.preventDefault(); keypadMode = "abc"; return render(); }
+  if (e.altKey && k === "3") { e.preventDefault(); keypadMode = "func"; return render(); }
+  if (e.altKey && lower === "m") { e.preventDefault(); return cycleMode(); }
+
   if (/^\d$/.test(k)) return insertDigit(k);
   if (k === "." || k === ",") return insertDot();
   if (k === "(") return insertLParen();
@@ -349,13 +493,14 @@ window.addEventListener("keydown", (e) => {
   if (k === "Backspace") return backspace();
   if (k === "+") return insertOp("add");
   if (k === "-") return insertOp("sub");
-  if (k === "*" || k.toLowerCase() === "x") return insertOp("mul");
+  if (k === "*" || lower === "x") return insertOp("mul");
   if (k === "/") return insertOp("div");
   if (k === "?") return onMystery();
-  if (k.toLowerCase() === "c" || k.toLowerCase() === "a") return clearAll();
+  if (lower === "c" || lower === "a") return clearAll();
+
+  if (insertFuncKeyFromMode(lower)) return;
+  if (keypadMode === "abc" && /^[a-z]$/.test(lower)) return insertToken(lower);
 });
 
-/* Bootstrap: warm the cache only (no UI changes until user clicks) */
 void prefetcher.topUp();
-
 render();

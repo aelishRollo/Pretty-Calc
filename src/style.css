@@ -112,17 +112,56 @@ html, body {
     inset 0 1px 0 rgba(255,255,255,0.06),
     inset 0 -6px 18px rgba(0,0,0,0.35);
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 2px;
+  grid-template-rows: auto auto 1fr;
+  gap: 6px;
+}
+
+.display-controls{
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mode-keys{
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ctrl-btn{
+  appearance: none;
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--fn) 72%, rgba(255,255,255,0.15));
+  color: var(--ink);
+  font: 800 clamp(9px, 1.35vmin, 11px) / 1 var(--font-ui);
+  letter-spacing: .03em;
+  padding: 6px 4px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.28), inset 0 1px 0 var(--bevel);
+  transition: transform 80ms ease, filter 120ms ease;
+}
+.ctrl-btn:hover{ filter: brightness(1.06); }
+.ctrl-btn:active{ transform: translateY(1px) scale(0.99); }
+.ctrl-btn.active{
+  background: color-mix(in oklab, var(--eq) 78%, rgba(255,255,255,0.2));
+}
+.ctrl-btn:focus-visible{
+  outline: 2px solid #b8f6de;
+  outline-offset: 2px;
+}
+
+.ctrl-btn-mini{
+  font-size: clamp(10px, 1.45vmin, 12px);
+  padding: 5px 4px;
 }
 
 .history{
   color: var(--ink-dim);
-  font: 600 clamp(10px, 1.8vmin, 14px) / 1.2 var(--font-ui);
+  font: 600 clamp(10px, 1.7vmin, 13px) / 1.25 var(--font-ui);
   text-align: right;
-  white-space: nowrap;
+  white-space: pre-line;
   overflow: hidden;
-  text-overflow: clip;
+  min-height: 3.8em;
 }
 
 .value{

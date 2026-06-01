@@ -16,6 +16,21 @@
       <div id="calculator" role="application" aria-label="Calculator">
         <header class="display" aria-hidden="false">
           <div class="display-inner" role="status" aria-live="polite" aria-atomic="true">
+            <div class="display-controls" aria-label="Advanced Controls">
+              <button class="ctrl-btn" data-key="modeMain" aria-label="Main Mode">MAIN</button>
+              <button class="ctrl-btn" data-key="modeAbc" aria-label="ABC Mode">ABC</button>
+              <button class="ctrl-btn" data-key="modeFunc" aria-label="Function Mode">FUNC</button>
+              <button class="ctrl-btn" data-key="toggleAngle" id="angleBtn" aria-label="Toggle Angle Mode">DEG</button>
+              <button class="ctrl-btn" data-key="toggleFrac" id="fracBtn" aria-label="Toggle Fraction Output">DEC</button>
+              <button class="ctrl-btn" data-key="ans" aria-label="Insert ans">ANS</button>
+            </div>
+            <div class="mode-keys" id="modeKeys" aria-label="Mode Keys">
+              <button class="ctrl-btn ctrl-btn-mini" data-key="modeSlot0" aria-label="Mode Key 1">A</button>
+              <button class="ctrl-btn ctrl-btn-mini" data-key="modeSlot1" aria-label="Mode Key 2">B</button>
+              <button class="ctrl-btn ctrl-btn-mini" data-key="modeSlot2" aria-label="Mode Key 3">C</button>
+              <button class="ctrl-btn ctrl-btn-mini" data-key="modeSlot3" aria-label="Mode Key 4">D</button>
+              <button class="ctrl-btn ctrl-btn-mini" data-key="modeSlot4" aria-label="Mode Key 5">E</button>
+            </div>
             <div class="history" id="history"></div>
             <div class="value" id="value">0</div>
           </div>
